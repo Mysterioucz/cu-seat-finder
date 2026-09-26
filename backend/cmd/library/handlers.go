@@ -4,83 +4,68 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
+	"fmt"
 	"strings"
 
-	"github.com/cu-seat-finder/backend/internal/httpx"
+	pb "github.com/cu-seat-finder/backend/gen/library/v1"
+	"github.com/cu-seat-finder/backend/internal/idgen"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-type Zone struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Capacity int    `json:"capacity"`
-}
-type Floor struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Zones []Zone `json:"zones"`
-}
-type Library struct {
-	ID       string   `json:"id"`
-	NameTh   string   `json:"name_th"`
-	NameEn   string   `json:"name_en"`
-	Capacity int      `json:"capacity"`
-	Amenities []string `json:"amenities"`
-	Floors   []Floor  `json:"floors"`
-	ImageURL *string  `json:"image_url,omitempty"`
-}
-type Room struct {
-	ID        string   `json:"id"`
-	LibraryID string   `json:"library_id"`
-	Name      string   `json:"name"`
-	Capacity  int      `json:"capacity"`
-	Amenities []string `json:"amenities"`
+type server struct {
+	pb.UnimplementedLibraryServiceServer
+	db *pgxpool.Pool
 }
 
-func (s *server) routes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/libraries", s.listLibraries)
-	mux.HandleFunc("GET /api/libraries/{id}", s.getLibrary)
-	mux.HandleFunc("GET /api/libraries/{id}/rooms", s.listRooms)
-	mux.HandleFunc("GET /api/rooms/{id}", s.getRoom)
+var errInternal = status.Error(codes.Internal, "internal error")
+
+func bad(msg string) error { return status.Error(codes.InvalidArgument, msg) }
+
+// fkViolation reports a Postgres foreign_key_violation (23503).
+func fkViolation(err error) bool {
+	var pe *pgconn.PgError
+	return errors.As(err, &pe) && pe.Code == "23503"
 }
 
-func (s *server) listLibraries(w http.ResponseWriter, r *http.Request) {
-	q := strings.ToLower(r.URL.Query().Get("q"))
-	amenity := r.URL.Query().Get("amenity")
+func jsonList(l []string) []byte {
+	if l == nil {
+		l = []string{}
+	}
+	b, _ := json.Marshal(l)
+	return b
+}
 
-	rows, err := s.db.Query(r.Context(), "SELECT id FROM library.libraries ORDER BY id")
+// ---- libraries ----
+
+func (s *server) ListLibraries(ctx context.Context, req *pb.ListLibrariesRequest) (*pb.ListLibrariesResponse, error) {
+	q := strings.ToLower(req.Q)
+	rows, err := s.db.Query(ctx, "SELECT id FROM library.libraries ORDER BY id")
 	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not list libraries")
-		return
+		return nil, errInternal
 	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not scan library")
-			return
-		}
-		ids = append(ids, id)
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, errInternal
 	}
-	rows.Close()
-
-	libraries := make([]Library, 0, len(ids))
+	out := &pb.ListLibrariesResponse{Libraries: []*pb.Library{}}
 	for _, id := range ids {
-		lib, err := loadLibrary(r.Context(), s.db, id)
+		lib, err := loadLibrary(ctx, s.db, id)
 		if err != nil {
 			continue
 		}
 		if q != "" && !strings.Contains(strings.ToLower(lib.NameEn), q) && !strings.Contains(strings.ToLower(lib.NameTh), q) {
 			continue
 		}
-		if amenity != "" && !contains(lib.Amenities, amenity) {
+		if req.Amenity != "" && !contains(lib.Amenities, req.Amenity) {
 			continue
 		}
-		libraries = append(libraries, *lib)
+		out.Libraries = append(out.Libraries, lib)
 	}
-	httpx.WriteJSON(w, http.StatusOK, libraries)
+	return out, nil
 }
 
 func contains(list []string, v string) bool {
@@ -92,52 +77,244 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-func (s *server) getLibrary(w http.ResponseWriter, r *http.Request) {
-	lib, err := loadLibrary(r.Context(), s.db, r.PathValue("id"))
+func (s *server) GetLibrary(ctx context.Context, req *pb.GetLibraryRequest) (*pb.Library, error) {
+	lib, err := loadLibrary(ctx, s.db, req.Id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		httpx.WriteError(w, http.StatusNotFound, "not_found", "library not found")
-		return
+		return nil, status.Error(codes.NotFound, "library not found")
 	}
 	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load library")
-		return
+		return nil, errInternal
 	}
-	httpx.WriteJSON(w, http.StatusOK, lib)
+	return lib, nil
 }
 
-func (s *server) listRooms(w http.ResponseWriter, r *http.Request) {
-	libID := r.PathValue("id")
-	rooms, err := loadRooms(r.Context(), s.db, "WHERE library_id=$1", libID)
-	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load rooms")
-		return
+func validLibrary(l *pb.Library) error {
+	if l == nil {
+		return bad("library is required")
 	}
-	httpx.WriteJSON(w, http.StatusOK, rooms)
+	if strings.TrimSpace(l.NameTh) == "" || strings.TrimSpace(l.NameEn) == "" {
+		return bad("name_th and name_en are required")
+	}
+	if l.Capacity <= 0 {
+		return bad("capacity must be > 0")
+	}
+	for _, f := range l.Floors {
+		if strings.TrimSpace(f.Name) == "" {
+			return bad("floor name is required")
+		}
+		for _, z := range f.Zones {
+			if strings.TrimSpace(z.Name) == "" || z.Capacity <= 0 {
+				return bad("zone needs a name and capacity > 0")
+			}
+		}
+	}
+	return nil
 }
 
-func (s *server) getRoom(w http.ResponseWriter, r *http.Request) {
-	rooms, err := loadRooms(r.Context(), s.db, "WHERE id=$1", r.PathValue("id"))
+// insertFloors writes floors/zones with deterministic, ordered ids (<lib>-fNN, <floor>-zNN)
+// so list order survives the ORDER BY id in loadLibrary.
+func insertFloors(ctx context.Context, tx pgx.Tx, libID string, floors []*pb.Floor) error {
+	for i, f := range floors {
+		fid := fmt.Sprintf("%s-f%02d", libID, i+1)
+		if _, err := tx.Exec(ctx, "INSERT INTO library.floors (id, library_id, name) VALUES ($1,$2,$3)", fid, libID, f.Name); err != nil {
+			return err
+		}
+		for j, z := range f.Zones {
+			if _, err := tx.Exec(ctx, "INSERT INTO library.zones (id, floor_id, name, capacity) VALUES ($1,$2,$3,$4)",
+				fmt.Sprintf("%s-z%02d", fid, j+1), fid, z.Name, z.Capacity); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *server) CreateLibrary(ctx context.Context, req *pb.CreateLibraryRequest) (*pb.Library, error) {
+	l := req.Library
+	if err := validLibrary(l); err != nil {
+		return nil, err
+	}
+	id := idgen.New()
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO library.libraries (id, name_th, name_en, capacity, amenities, image_url)
+			VALUES ($1,$2,$3,$4,$5,NULLIF($6,''))`, id, l.NameTh, l.NameEn, l.Capacity, jsonList(l.Amenities), l.ImageUrl); err != nil {
+			return err
+		}
+		return insertFloors(ctx, tx, id, l.Floors)
+	})
 	if err != nil {
-		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load room")
-		return
+		return nil, errInternal
+	}
+	return loadLibrary(ctx, s.db, id)
+}
+
+func (s *server) UpdateLibrary(ctx context.Context, req *pb.UpdateLibraryRequest) (*pb.Library, error) {
+	l := req.Library
+	if err := validLibrary(l); err != nil {
+		return nil, err
+	}
+	if l.Id == "" {
+		return nil, bad("library.id is required")
+	}
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE library.libraries SET name_th=$2, name_en=$3, capacity=$4, amenities=$5, image_url=NULLIF($6,'')
+			WHERE id=$1`, l.Id, l.NameTh, l.NameEn, l.Capacity, jsonList(l.Amenities), l.ImageUrl)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return pgx.ErrNoRows
+		}
+		if err := deleteFloors(ctx, tx, l.Id); err != nil {
+			return err
+		}
+		return insertFloors(ctx, tx, l.Id, l.Floors)
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, status.Error(codes.NotFound, "library not found")
+	}
+	if err != nil {
+		return nil, errInternal
+	}
+	return loadLibrary(ctx, s.db, l.Id)
+}
+
+func deleteFloors(ctx context.Context, tx pgx.Tx, libID string) error {
+	if _, err := tx.Exec(ctx, "DELETE FROM library.zones WHERE floor_id IN (SELECT id FROM library.floors WHERE library_id=$1)", libID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, "DELETE FROM library.floors WHERE library_id=$1", libID)
+	return err
+}
+
+func (s *server) DeleteLibrary(ctx context.Context, req *pb.DeleteLibraryRequest) (*pb.DeleteResponse, error) {
+	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+		if err := deleteFloors(ctx, tx, req.Id); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, "DELETE FROM library.libraries WHERE id=$1", req.Id)
+		if err == nil && tag.RowsAffected() == 0 {
+			return pgx.ErrNoRows
+		}
+		return err
+	})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return nil, status.Error(codes.NotFound, "library not found")
+	case fkViolation(err): // rooms still reference it
+		return nil, status.Error(codes.FailedPrecondition, "library still has rooms")
+	case err != nil:
+		return nil, errInternal
+	}
+	return &pb.DeleteResponse{}, nil
+}
+
+// ---- rooms ----
+
+func (s *server) ListRooms(ctx context.Context, req *pb.ListRoomsRequest) (*pb.ListRoomsResponse, error) {
+	var rooms []*pb.Room
+	var err error
+	if req.LibraryId == "" {
+		rooms, err = loadRooms(ctx, s.db, "")
+	} else {
+		rooms, err = loadRooms(ctx, s.db, "WHERE library_id=$1", req.LibraryId)
+	}
+	if err != nil {
+		return nil, errInternal
+	}
+	return &pb.ListRoomsResponse{Rooms: rooms}, nil
+}
+
+func (s *server) GetRoom(ctx context.Context, req *pb.GetRoomRequest) (*pb.Room, error) {
+	rooms, err := loadRooms(ctx, s.db, "WHERE id=$1", req.Id)
+	if err != nil {
+		return nil, errInternal
 	}
 	if len(rooms) == 0 {
-		httpx.WriteError(w, http.StatusNotFound, "not_found", "room not found")
-		return
+		return nil, status.Error(codes.NotFound, "room not found")
 	}
-	httpx.WriteJSON(w, http.StatusOK, rooms[0])
+	return rooms[0], nil
 }
 
-func loadLibrary(ctx context.Context, db *pgxpool.Pool, id string) (*Library, error) {
-	var lib Library
+func validRoom(r *pb.Room) error {
+	if r == nil {
+		return bad("room is required")
+	}
+	if r.LibraryId == "" {
+		return bad("room.library_id is required")
+	}
+	if strings.TrimSpace(r.Name) == "" {
+		return bad("room name is required")
+	}
+	if r.Capacity <= 0 {
+		return bad("capacity must be > 0")
+	}
+	return nil
+}
+
+func (s *server) CreateRoom(ctx context.Context, req *pb.CreateRoomRequest) (*pb.Room, error) {
+	r := req.Room
+	if err := validRoom(r); err != nil {
+		return nil, err
+	}
+	id := idgen.New()
+	_, err := s.db.Exec(ctx, "INSERT INTO library.rooms (id, library_id, name, capacity, amenities) VALUES ($1,$2,$3,$4,$5)",
+		id, r.LibraryId, r.Name, r.Capacity, jsonList(r.Amenities))
+	if fkViolation(err) {
+		return nil, bad("library_id does not exist")
+	}
+	if err != nil {
+		return nil, errInternal
+	}
+	return s.GetRoom(ctx, &pb.GetRoomRequest{Id: id})
+}
+
+func (s *server) UpdateRoom(ctx context.Context, req *pb.UpdateRoomRequest) (*pb.Room, error) {
+	r := req.Room
+	if err := validRoom(r); err != nil {
+		return nil, err
+	}
+	if r.Id == "" {
+		return nil, bad("room.id is required")
+	}
+	tag, err := s.db.Exec(ctx, "UPDATE library.rooms SET library_id=$2, name=$3, capacity=$4, amenities=$5 WHERE id=$1",
+		r.Id, r.LibraryId, r.Name, r.Capacity, jsonList(r.Amenities))
+	if fkViolation(err) {
+		return nil, bad("library_id does not exist")
+	}
+	if err != nil {
+		return nil, errInternal
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, status.Error(codes.NotFound, "room not found")
+	}
+	return s.GetRoom(ctx, &pb.GetRoomRequest{Id: r.Id})
+}
+
+func (s *server) DeleteRoom(ctx context.Context, req *pb.DeleteRoomRequest) (*pb.DeleteResponse, error) {
+	tag, err := s.db.Exec(ctx, "DELETE FROM library.rooms WHERE id=$1", req.Id)
+	if err != nil {
+		return nil, errInternal
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, status.Error(codes.NotFound, "room not found")
+	}
+	return &pb.DeleteResponse{}, nil
+}
+
+// ---- loaders ----
+
+func loadLibrary(ctx context.Context, db *pgxpool.Pool, id string) (*pb.Library, error) {
+	lib := &pb.Library{Amenities: []string{}, Floors: []*pb.Floor{}}
 	var amenities []byte
+	var img *string
 	row := db.QueryRow(ctx, "SELECT id, name_th, name_en, capacity, amenities, image_url FROM library.libraries WHERE id=$1", id)
-	if err := row.Scan(&lib.ID, &lib.NameTh, &lib.NameEn, &lib.Capacity, &amenities, &lib.ImageURL); err != nil {
+	if err := row.Scan(&lib.Id, &lib.NameTh, &lib.NameEn, &lib.Capacity, &amenities, &img); err != nil {
 		return nil, err
 	}
 	_ = json.Unmarshal(amenities, &lib.Amenities)
-	if lib.Amenities == nil {
-		lib.Amenities = []string{}
+	if img != nil {
+		lib.ImageUrl = *img
 	}
 
 	frows, err := db.Query(ctx, "SELECT id, name FROM library.floors WHERE library_id=$1 ORDER BY id", id)
@@ -146,53 +323,47 @@ func loadLibrary(ctx context.Context, db *pgxpool.Pool, id string) (*Library, er
 	}
 	defer frows.Close()
 	for frows.Next() {
-		var f Floor
-		if err := frows.Scan(&f.ID, &f.Name); err != nil {
+		f := &pb.Floor{Zones: []*pb.Zone{}}
+		if err := frows.Scan(&f.Id, &f.Name); err != nil {
 			return nil, err
 		}
-		f.Zones = []Zone{}
 		lib.Floors = append(lib.Floors, f)
 	}
-	if lib.Floors == nil {
-		lib.Floors = []Floor{}
-	}
+	frows.Close()
 
-	for i := range lib.Floors {
-		zrows, err := db.Query(ctx, "SELECT id, name, capacity FROM library.zones WHERE floor_id=$1 ORDER BY id", lib.Floors[i].ID)
+	for _, f := range lib.Floors {
+		zrows, err := db.Query(ctx, "SELECT id, name, capacity FROM library.zones WHERE floor_id=$1 ORDER BY id", f.Id)
 		if err != nil {
 			return nil, err
 		}
 		for zrows.Next() {
-			var z Zone
-			if err := zrows.Scan(&z.ID, &z.Name, &z.Capacity); err != nil {
+			z := &pb.Zone{}
+			if err := zrows.Scan(&z.Id, &z.Name, &z.Capacity); err != nil {
 				zrows.Close()
 				return nil, err
 			}
-			lib.Floors[i].Zones = append(lib.Floors[i].Zones, z)
+			f.Zones = append(f.Zones, z)
 		}
 		zrows.Close()
 	}
-	return &lib, nil
+	return lib, nil
 }
 
-func loadRooms(ctx context.Context, db *pgxpool.Pool, where string, arg string) ([]Room, error) {
-	rows, err := db.Query(ctx, "SELECT id, library_id, name, capacity, amenities FROM library.rooms "+where+" ORDER BY id", arg)
+func loadRooms(ctx context.Context, db *pgxpool.Pool, where string, args ...any) ([]*pb.Room, error) {
+	rows, err := db.Query(ctx, "SELECT id, library_id, name, capacity, amenities FROM library.rooms "+where+" ORDER BY id", args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	rooms := []Room{}
+	rooms := []*pb.Room{}
 	for rows.Next() {
-		var room Room
+		room := &pb.Room{Amenities: []string{}}
 		var amenities []byte
-		if err := rows.Scan(&room.ID, &room.LibraryID, &room.Name, &room.Capacity, &amenities); err != nil {
+		if err := rows.Scan(&room.Id, &room.LibraryId, &room.Name, &room.Capacity, &amenities); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal(amenities, &room.Amenities)
-		if room.Amenities == nil {
-			room.Amenities = []string{}
-		}
 		rooms = append(rooms, room)
 	}
-	return rooms, nil
+	return rooms, rows.Err()
 }

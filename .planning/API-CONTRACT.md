@@ -7,12 +7,13 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 | Service     | Port | Owns path prefixes                         | DB schema     |
 |-------------|------|--------------------------------------------|---------------|
 | user        | 8081 | /api/auth, /api/users                      | users         |
-| library     | 8082 | /api/libraries, /api/rooms                 | library       |
+| library     | 9082 (gRPC) | — gRPC only; BFF exposes /api/libraries, /api/rooms | library |
 | occupancy   | 8083 | /api/occupancy                             | occupancy     |
 | reservation | 8084 | /api/reservations                          | reservation   |
 | review      | 8085 | /api/reviews                               | review        |
 
-- No separate Go gateway: Next.js `rewrites` in `frontend/next.config.ts` route each prefix to its service (browser only ever talks to :3000).
+- No separate Go gateway: Next.js is the BFF. `rewrites` in `frontend/next.config.ts` forward REST prefixes to their service; for the gRPC-only Library service, Next.js **route handlers** under `src/app/api/libraries` and `src/app/api/rooms` translate REST↔gRPC (browser only ever talks to :3000).
+- Transport (ADR-007): browser→BFF is REST; **Library Service is gRPC** (`proto/library/v1/library.proto`) and every service-to-Library call (Occupancy, Reservation, Review, Next.js server) uses gRPC. Other service-to-service calls (→ User) stay REST.
 - One local Postgres (docker compose, `postgres://seat:seat@localhost:5432/seatfinder`), one schema per service. Services never read another service's schema; they call each other over HTTP (collaborations below).
 - Auth: JWT HS256, secret `JWT_SECRET` (dev default `dev-secret`). Header `Authorization: Bearer <token>`. Claims: `sub` (user id), `role` (`customer`|`admin`), `name`, `exp`.
 - JSON everywhere, snake_case fields, timestamps RFC3339. Errors: `{"error": "<code>", "message": "<human text>"}` with proper status.
@@ -25,14 +26,13 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 - `GET /api/users/{id}` → `{id, name, role, student_id, active_penalty: bool}` (internal viewProfile).
 - User: `{id, student_id?, email?, name, role, language: "th"|"en", created_at}`.
 
-## Library service (8082)
-- `GET /api/libraries?q=&amenity=` → `[Library]` (searchLibrary via q/amenity).
-- `GET /api/libraries/{id}` → `Library` (404 if missing).
-- `GET /api/libraries/{id}/rooms` → `[Room]`.
-- `GET /api/rooms/{id}` → `Room`.
-- Library: `{id, name_th, name_en, capacity, amenities: [string], floors: [{id, name, zones: [{id, name, capacity}]}], image_url?}`.
-- Room: `{id, library_id, name, capacity, amenities: [string]}`.
-- Seed ~6 real Chula libraries (Central Library, Engineering, Science, Arts, Architecture, Law...) with 2-4 rooms each.
+## Library service (gRPC :9082) — full CRUD
+- Contract: `proto/library/v1/library.proto` (binding). List/Get open; Create/Update/Delete need `authorization: Bearer <JWT>` metadata with role=admin.
+- Seed ~6 real Chula libraries with 2-4 rooms each (unchanged data).
+- BFF REST facade (Next.js route handlers, same JSON shapes as before so existing pages keep working; gRPC status → HTTP: NOT_FOUND 404, INVALID_ARGUMENT 400, UNAUTHENTICATED 401, PERMISSION_DENIED 403, FAILED_PRECONDITION 409, UNAVAILABLE 503):
+  - `GET /api/libraries?q=&amenity=` → `[Library]`; `GET /api/libraries/{id}` → `Library`; `GET /api/libraries/{id}/rooms` → `[Room]`; `GET /api/rooms/{id}` → `Room`.
+  - admin: `POST /api/libraries`, `PUT /api/libraries/{id}`, `DELETE /api/libraries/{id}` (204), `POST /api/rooms`, `PUT /api/rooms/{id}`, `DELETE /api/rooms/{id}` (204). Forward the caller's bearer token as gRPC metadata.
+- Library JSON: `{id, name_th, name_en, capacity, amenities, floors: [{id, name, zones: [{id, name, capacity}]}], image_url?}`; Room: `{id, library_id, name, capacity, amenities}`.
 
 ## Occupancy service (8083)
 - Polls turnstile source every `POLL_INTERVAL` (default 30s) with `time.Ticker` (ADR-005). Dev source = in-process mock turnstile generating tap-in/out events; behind a `TurnstileSource` interface.
@@ -55,6 +55,9 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 ## Review service (8085)
 - `GET /api/reviews?library_id=` → `{average: number, count: int, items: [Review]}` (hidden reviews excluded unless admin).
 - `POST /api/reviews` `{library_id, rating 1-5, tags: [string], comment?}` (auth) → 201. Profanity filter (Thai + English wordlist) → 422 `profanity` so UI asks user to revise. Validates library via Library service; reviewer name via User service.
-- `GET /api/reviews/flagged` (admin), `PATCH /api/reviews/{id}/moderate` `{hidden: bool}` (admin).
+- `PUT /api/reviews/{id}` `{rating, tags, comment?}` (owner only; same validation + profanity 422) → `Review`.
+- `DELETE /api/reviews/{id}` (owner or admin) → 204; 403 `forbidden` otherwise, 404 if missing.
+- `GET /api/reviews/{id}` → `Review` (404 if missing or hidden and caller not admin).
+- `GET /api/reviews/flagged` (admin, all reviews, hidden first — moderation queue), `PATCH /api/reviews/{id}/moderate` `{hidden: bool}` (admin).
 - Review: `{id, library_id, user_id, user_name, rating, tags, comment, hidden, created_at}`. Tags stored as JSONB.
 - Allowed tags: `quiet, noisy, cold, hot, strong_wifi, weak_wifi, clean, many_outlets, crowded`.

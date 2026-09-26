@@ -1,0 +1,163 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+import { useT } from "@/lib/LangContext";
+import type { Reservation, Review } from "@/lib/types";
+import Button from "./Button";
+import AdminLibraries from "./AdminLibraries";
+import ErrorState from "./ErrorState";
+import Skeleton from "./Skeleton";
+
+function RowSkeleton() {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <Skeleton className="h-4 w-40" />
+      <Skeleton className="h-9 w-32" />
+    </div>
+  );
+}
+
+export default function AdminDashboard() {
+  const { t, lang } = useT();
+
+  const [pending, setPending] = useState<Reservation[] | null>(null);
+  const [pendingError, setPendingError] = useState(false);
+  const [pendingBusy, setPendingBusy] = useState<string | null>(null);
+
+  const [flagged, setFlagged] = useState<Review[] | null>(null);
+  const [flaggedError, setFlaggedError] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState<string | null>(null);
+
+  function loadPending() {
+    api<Reservation[]>("/api/reservations?status=pending")
+      .then((data) => {
+        setPending(data);
+        setPendingError(false);
+      })
+      .catch(() => setPendingError(true));
+  }
+
+  function loadFlagged() {
+    api<Review[]>("/api/reviews/flagged")
+      .then((data) => {
+        setFlagged(data);
+        setFlaggedError(false);
+      })
+      .catch(() => setFlaggedError(true));
+  }
+
+  useEffect(() => {
+    loadPending();
+    loadFlagged();
+  }, []);
+
+  async function act(id: string, action: "accept" | "reject") {
+    setPendingBusy(id);
+    try {
+      await api(`/api/reservations/${id}/${action}`, { method: "POST" });
+      loadPending();
+    } catch {
+      setPendingError(true);
+    } finally {
+      setPendingBusy(null);
+    }
+  }
+
+  async function moderate(id: string, hidden: boolean) {
+    setReviewBusy(id);
+    try {
+      await api(`/api/reviews/${id}/moderate`, { method: "PATCH", body: JSON.stringify({ hidden }) });
+      loadFlagged();
+    } catch {
+      setFlaggedError(true);
+    } finally {
+      setReviewBusy(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <h1 className="text-xl font-bold">{t("admin.title")}</h1>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">
+          {t("admin.pending")}
+          {pending && pending.length > 0 ? ` (${pending.length})` : ""}
+        </h2>
+        {pendingError && <ErrorState onRetry={loadPending} />}
+        {pending?.length === 0 && <p className="text-sm text-muted-foreground">{t("admin.noPending")}</p>}
+        {pending === null && !pendingError ? (
+          <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+            <RowSkeleton />
+            <RowSkeleton />
+          </div>
+        ) : (
+          pending && pending.length > 0 && (
+            <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+              {pending.map((r) => (
+                <div key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                  <div className="text-sm">
+                    <p className="font-medium">
+                      {new Date(r.start_time).toLocaleString(lang === "th" ? "th-TH" : "en-US")}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{t("admin.room", { id: r.room_id })}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" loading={pendingBusy === r.id} onClick={() => act(r.id, "reject")}>
+                      {t("admin.reject")}
+                    </Button>
+                    <Button loading={pendingBusy === r.id} onClick={() => act(r.id, "accept")}>
+                      {t("admin.accept")}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </section>
+
+      <AdminLibraries />
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">
+          {t("admin.reviews")}
+          {flagged && flagged.length > 0 ? ` (${flagged.length})` : ""}
+        </h2>
+        {flaggedError && <ErrorState onRetry={loadFlagged} />}
+        {flagged?.length === 0 && <p className="text-sm text-muted-foreground">{t("admin.noFlagged")}</p>}
+        {flagged === null && !flaggedError ? (
+          <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+            <RowSkeleton />
+            <RowSkeleton />
+          </div>
+        ) : (
+          flagged &&
+          flagged.length > 0 && (
+            <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+              {flagged.map((rv) => (
+                <div key={rv.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">
+                      {rv.user_name} · {rv.rating}★{" "}
+                      {rv.hidden && <span className="ml-1 text-xs text-muted-foreground">({t("admin.hidden")})</span>}
+                    </p>
+                    {rv.comment && <p className="mt-1 text-sm text-muted-foreground">{rv.comment}</p>}
+                  </div>
+                  <Button
+                    variant={rv.hidden ? "secondary" : "danger"}
+                    loading={reviewBusy === rv.id}
+                    onClick={() => moderate(rv.id, !rv.hidden)}
+                  >
+                    {t(rv.hidden ? "admin.unhide" : "admin.hide")}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </section>
+    </div>
+  );
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -47,14 +48,14 @@ func seed(ctx context.Context, db *pgxpool.Pool) error {
 // name, role, language, created_at} per API-CONTRACT.md. active_penalty is a
 // separate internal field, exposed only via the /api/users/{id} profile view.
 type User struct {
-	ID            string  `json:"id"`
-	StudentID     *string `json:"student_id,omitempty"`
-	Email         *string `json:"email,omitempty"`
-	Name          string  `json:"name"`
-	Role          string  `json:"role"`
-	Language      string  `json:"language"`
-	ActivePenalty bool    `json:"-"`
-	CreatedAt     string  `json:"created_at"`
+	ID            string    `json:"id"`
+	StudentID     *string   `json:"student_id,omitempty"`
+	Email         *string   `json:"email,omitempty"`
+	Name          string    `json:"name"`
+	Role          string    `json:"role"`
+	Language      string    `json:"language"`
+	ActivePenalty bool      `json:"-"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // Profile is the {id, name, role, student_id, active_penalty} shape other

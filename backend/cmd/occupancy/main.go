@@ -10,8 +10,10 @@ import (
 	"strconv"
 	"time"
 
+	pb "github.com/cu-seat-finder/backend/gen/library/v1"
 	"github.com/cu-seat-finder/backend/internal/dbx"
 	"github.com/cu-seat-finder/backend/internal/httpx"
+	"github.com/cu-seat-finder/backend/internal/libraryclient"
 	"github.com/cu-seat-finder/backend/internal/turnstile"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -26,7 +28,6 @@ func getenv(key, def string) string {
 func main() {
 	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5432/seatfinder")
 	port := getenv("PORT", "8083")
-	libraryURL := getenv("LIBRARY_URL", "http://localhost:8082")
 	pollInterval := 30 * time.Second
 	if v := os.Getenv("POLL_INTERVAL"); v != "" {
 		if secs, err := strconv.Atoi(v); err == nil {
@@ -46,7 +47,7 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	srv := &server{db: pool, libraryURL: libraryURL, pollInterval: pollInterval, source: turnstile.NewMock()}
+	srv := &server{db: pool, library: libraryclient.New(), pollInterval: pollInterval, source: turnstile.NewMock()}
 	go srv.pollLoop(context.Background())
 
 	mux := http.NewServeMux()
@@ -58,7 +59,7 @@ func main() {
 
 type server struct {
 	db           *pgxpool.Pool
-	libraryURL   string
+	library      pb.LibraryServiceClient
 	pollInterval time.Duration
 	source       turnstile.Source
 }

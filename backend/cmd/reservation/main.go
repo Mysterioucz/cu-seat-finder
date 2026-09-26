@@ -11,8 +11,10 @@ import (
 	"os"
 	"time"
 
+	pb "github.com/cu-seat-finder/backend/gen/library/v1"
 	"github.com/cu-seat-finder/backend/internal/dbx"
 	"github.com/cu-seat-finder/backend/internal/httpx"
+	"github.com/cu-seat-finder/backend/internal/libraryclient"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -27,7 +29,6 @@ func main() {
 	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5432/seatfinder")
 	jwtSecret := getenv("JWT_SECRET", "dev-secret")
 	port := getenv("PORT", "8084")
-	libraryURL := getenv("LIBRARY_URL", "http://localhost:8082")
 	userURL := getenv("USER_URL", "http://localhost:8081")
 
 	pool, err := dbx.Connect(databaseURL)
@@ -42,7 +43,7 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	srv := &server{db: pool, jwtSecret: jwtSecret, libraryURL: libraryURL, userURL: userURL}
+	srv := &server{db: pool, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL}
 	mux := http.NewServeMux()
 	srv.routes(mux)
 
@@ -51,8 +52,8 @@ func main() {
 }
 
 type server struct {
-	db         *pgxpool.Pool
-	jwtSecret  string
-	libraryURL string
-	userURL    string
+	db        *pgxpool.Pool
+	jwtSecret string
+	library   pb.LibraryServiceClient
+	userURL   string
 }

@@ -1,17 +1,18 @@
 // Library service: library, floor/zone, and meeting room master data.
-// Owns /api/libraries, /api/rooms. Schema: library. See API-CONTRACT.md.
+// gRPC only (proto/library/v1/library.proto). Schema: library. See API-CONTRACT.md.
 package main
 
 import (
 	"context"
 	"log"
-	"net/http"
+	"net"
 	"os"
 	"time"
 
+	pb "github.com/cu-seat-finder/backend/gen/library/v1"
 	"github.com/cu-seat-finder/backend/internal/dbx"
-	"github.com/cu-seat-finder/backend/internal/httpx"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func getenv(key, def string) string {
@@ -23,7 +24,8 @@ func getenv(key, def string) string {
 
 func main() {
 	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5432/seatfinder")
-	port := getenv("PORT", "8082")
+	port := getenv("GRPC_PORT", "9082")
+	jwtSecret := getenv("JWT_SECRET", "dev-secret")
 
 	pool, err := dbx.Connect(databaseURL)
 	if err != nil {
@@ -37,14 +39,14 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	srv := &server{db: pool}
-	mux := http.NewServeMux()
-	srv.routes(mux)
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatalf("listen: %v", err)
+	}
+	g := grpc.NewServer(grpc.UnaryInterceptor(adminOnly(jwtSecret)))
+	pb.RegisterLibraryServiceServer(g, &server{db: pool})
+	reflection.Register(g)
 
-	log.Printf("library service listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, httpx.WithCORS(mux)))
-}
-
-type server struct {
-	db *pgxpool.Pool
+	log.Printf("library gRPC service listening on :%s", port)
+	log.Fatal(g.Serve(lis))
 }

@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	pb "github.com/cu-seat-finder/backend/gen/library/v1"
 	"github.com/cu-seat-finder/backend/internal/authn"
 	"github.com/cu-seat-finder/backend/internal/httpx"
 	"github.com/cu-seat-finder/backend/internal/idgen"
+	"github.com/cu-seat-finder/backend/internal/libraryclient"
 	"github.com/cu-seat-finder/backend/internal/svcclient"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -23,10 +25,6 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/reservations/{id}/cancel", authn.Require(s.jwtSecret)(http.HandlerFunc(s.cancel)))
 }
 
-type room struct {
-	ID       string `json:"id"`
-	Capacity int    `json:"capacity"`
-}
 type profile struct {
 	ActivePenalty bool `json:"active_penalty"`
 }
@@ -53,20 +51,21 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	// Validate room via Library service.
-	var rm room
-	status, err := svcclient.GetJSON(ctx, s.libraryURL+"/api/rooms/"+req.RoomID, &rm)
-	if err != nil {
-		httpx.WriteError(w, http.StatusBadGateway, "internal", "could not reach library service")
+	lctx, cancel := libraryclient.Timeout(ctx)
+	defer cancel()
+	_, err = s.library.GetRoom(lctx, &pb.GetRoomRequest{Id: req.RoomID})
+	if libraryclient.IsNotFound(err) {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "room not found")
 		return
 	}
-	if status == http.StatusNotFound {
-		httpx.WriteError(w, http.StatusNotFound, "not_found", "room not found")
+	if err != nil {
+		httpx.WriteError(w, http.StatusBadGateway, "internal", "could not reach library service")
 		return
 	}
 
 	// Quota / penalty check via User service (viewProfile collaboration).
 	var prof profile
-	status, err = svcclient.GetJSON(ctx, s.userURL+"/api/users/"+claims.UserID, &prof)
+	status, err := svcclient.GetJSON(ctx, s.userURL+"/api/users/"+claims.UserID, &prof)
 	if err != nil || status != http.StatusOK {
 		httpx.WriteError(w, http.StatusBadGateway, "internal", "could not reach user service")
 		return

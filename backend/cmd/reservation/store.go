@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,15 +44,15 @@ func migrate(ctx context.Context, db *pgxpool.Pool) error {
 }
 
 type Reservation struct {
-	ID               string  `json:"id"`
-	UserID           string  `json:"user_id"`
-	RoomID           string  `json:"room_id"`
-	StartTime        string  `json:"start_time"`
-	EndTime          string  `json:"end_time"`
-	Status           string  `json:"status"`
-	Reference        *string `json:"reference,omitempty"`
-	CheckinDeadline  *string `json:"checkin_deadline,omitempty"`
-	CreatedAt        string  `json:"created_at"`
+	ID              string     `json:"id"`
+	UserID          string     `json:"user_id"`
+	RoomID          string     `json:"room_id"`
+	StartTime       time.Time  `json:"start_time"`
+	EndTime         time.Time  `json:"end_time"`
+	Status          string     `json:"status"`
+	Reference       *string    `json:"reference,omitempty"`
+	CheckinDeadline *time.Time `json:"checkin_deadline,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 const reservationCols = "id, user_id, room_id, start_time, end_time, status, reference, checkin_deadline, created_at"

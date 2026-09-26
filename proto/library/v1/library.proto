@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package library.v1;
+
+option go_package = "github.com/cu-seat-finder/backend/gen/library/v1;libraryv1";
+
+// Library Service: source of truth for library, floor, zone and meeting-room
+// master data. gRPC-only (ADR-007). Read RPCs are open; Create/Update/Delete
+// require metadata "authorization: Bearer <JWT>" with role=admin, else
+// PERMISSION_DENIED (or UNAUTHENTICATED if missing/invalid).
+// Errors: NOT_FOUND for unknown ids, INVALID_ARGUMENT for bad input,
+// FAILED_PRECONDITION when deleting a library that still has rooms.
+service LibraryService {
+  rpc ListLibraries(ListLibrariesRequest) returns (ListLibrariesResponse);
+  rpc GetLibrary(GetLibraryRequest) returns (Library);
+  rpc CreateLibrary(CreateLibraryRequest) returns (Library);
+  rpc UpdateLibrary(UpdateLibraryRequest) returns (Library);
+  rpc DeleteLibrary(DeleteLibraryRequest) returns (DeleteResponse);
+
+  rpc ListRooms(ListRoomsRequest) returns (ListRoomsResponse);
+  rpc GetRoom(GetRoomRequest) returns (Room);
+  rpc CreateRoom(CreateRoomRequest) returns (Room);
+  rpc UpdateRoom(UpdateRoomRequest) returns (Room);
+  rpc DeleteRoom(DeleteRoomRequest) returns (DeleteResponse);
+}
+
+message Zone {
+  string id = 1;
+  string name = 2;
+  int32 capacity = 3;
+}
+
+message Floor {
+  string id = 1;
+  string name = 2;
+  repeated Zone zones = 3;
+}
+
+message Library {
+  string id = 1;
+  string name_th = 2;
+  string name_en = 3;
+  int32 capacity = 4;
+  repeated string amenities = 5;
+  repeated Floor floors = 6;
+  string image_url = 7; // empty when unset
+}
+
+message Room {
+  string id = 1;
+  string library_id = 2;
+  string name = 3;
+  int32 capacity = 4;
+  repeated string amenities = 5;
+}
+
+message ListLibrariesRequest {
+  string q = 1;       // substring match on name_th/name_en, optional
+  string amenity = 2; // exact amenity match, optional
+}
+message ListLibrariesResponse { repeated Library libraries = 1; }
+message GetLibraryRequest { string id = 1; }
+
+// id is server-generated; floors are replaced wholesale on update.
+message CreateLibraryRequest { Library library = 1; }
+message UpdateLibraryRequest { Library library = 1; } // library.id required
+message DeleteLibraryRequest { string id = 1; }
+
+message ListRoomsRequest { string library_id = 1; } // empty = all rooms
+message ListRoomsResponse { repeated Room rooms = 1; }
+message GetRoomRequest { string id = 1; }
+message CreateRoomRequest { Room room = 1; } // room.library_id must exist
+message UpdateRoomRequest { Room room = 1; } // room.id required
+message DeleteRoomRequest { string id = 1; }
+
+message DeleteResponse {}

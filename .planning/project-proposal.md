@@ -327,3 +327,57 @@ Accepted
 •  	Occupancy logs share the relational database; heavy growth would call for extra indexing or partitioning.
 
  
+
+### **ADR-007: Inter-Service Communication**
+
+**Context**
+
+Clients and services talk to each other in two different situations. The browser talks to the Next.js server (ADR-001), where broad tooling support and easy debugging matter. Between backend services, a handful of synchronous lookups occur: Reservation, Review, and Occupancy call Library Service to validate a room or library, and Reservation and Review call User Service `viewProfile()`. Options: REST/JSON everywhere; gRPC everywhere; or REST at the edge with gRPC between services. Browsers cannot call gRPC directly without a proxy (gRPC-Web), so gRPC at the edge would add infrastructure for no benefit. Internally, Library Service is a stable, strongly-typed master-data contract consumed by three other services and by the Next.js server, which is where a schema-first contract (protobuf) pays for itself: field changes are caught at compile time rather than at runtime. The team has not written Go before (ADR-003), so gRPC is limited to one service to keep the learning surface small. The course also requires both REST and gRPC services with CRUD.
+
+**Decision**
+
+REST/JSON for the browser-facing API and for the Review, Reservation, Occupancy, and User services. Library Service is gRPC-only, defined in `proto/library/v1/library.proto` with full CRUD for libraries and rooms; Occupancy, Reservation, Review, and the Next.js server call it over gRPC. The Next.js server exposes `/api/libraries` and `/api/rooms` as REST route handlers that translate to gRPC, so the browser never speaks gRPC. Review Service is the REST service with full CRUD. Service-to-service calls to User Service remain REST.
+
+**Status**
+
+Accepted
+
+**Consequences**
+
+•  	Two protocols to run and debug; gRPC calls need `grpcurl` or server reflection instead of curl.
+
+•  	Protobuf code generation is added to the Go build; generated code is committed so teammates need no toolchain to build.
+
+•  	The Library contract is type-checked across Go and Next.js consumers, and admin-only writes are enforced by a server interceptor reading the caller's JWT from gRPC metadata.
+
+•  	Next.js needs a small REST-to-gRPC translation layer, which is the only place the two protocols meet.
+
+•  	Each synchronous call adds latency and a failure point; callers set deadlines and return a clear error when a dependency is down.
+
+•  	If more services later need typed contracts, they can adopt gRPC one at a time without changing the browser API.
+
+### **ADR-008: Data Ownership Between Services**
+
+**Context**
+
+Microservices are meant to own their data so they can change independently, which argues for a separate database per service. But ADR-006 selected a single managed Prisma Postgres instance on a free tier, and running five database instances would multiply cost and operational work for a three-person team. Options: one shared schema all services read freely; a separate database instance per service; or one instance with a separate schema per service.
+
+**Decision**
+
+One PostgreSQL instance with one schema per service (`users`, `library`, `occupancy`, `reservation`, `review`). A service reads and writes only its own schema; data owned by another service is obtained through that service's API (ADR-007), never by querying its tables. Each service creates and migrates its own schema.
+
+**Status**
+
+Accepted
+
+**Consequences**
+
+•  	Logical data ownership, the core property of database-per-service, is kept at the cost of a single instance.
+
+•  	No cross-service foreign keys or joins; references such as `reservation.user_id` and `review.library_id` are validated through API calls at write time and can become dangling if the referenced record is deleted.
+
+•  	All services share one instance's availability, connection limit, and free-tier quota; a runaway query in one service can slow the others.
+
+•  	Splitting a schema into its own instance later requires only a connection-string change for that service, because no other service touches its tables.
+
+•  	The schema boundary is a convention, not an enforced rule, unless each service is given its own database role restricted to its schema; that hardening is deferred.

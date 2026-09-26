@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+:root {
+  /* Warm neutrals (not cool gray) + CU pink used sparingly as an accent. */
+  --background: #faf9f7;
+  --surface: #ffffff;
+  --surface-muted: #f1eee8;
+  --border: #e4dfd6;
+  --foreground: #241f1c;
+  --muted-foreground: #6b6459;
+
+  /* CU brand pink. `--brand` is deepened from the literal identity hex so button/link
+     TEXT clears 4.5:1 on white; `--brand-soft` keeps the true CU pink for decorative,
+     non-text use (dots, badge fills, active-chip fill) where 3:1 is enough. */
+  --brand: #c13e72;
+  --brand-soft: #de5c8e;
+  --brand-foreground: #ffffff;
+
+  /* Occupancy density — 4 bands, always paired with a text label + bar, never color-only. */
+  --density-low-bg: #dcf3e4;
+  --density-low-fg: #196c3e;
+  --density-medium-bg: #fbedcf;
+  --density-medium-fg: #8a5a10;
+  --density-high-bg: #fbe3d3;
+  --density-high-fg: #9a4a15;
+  --density-full-bg: #fadada;
+  --density-full-fg: #a4212a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-density-low-bg: var(--density-low-bg);
+  --color-density-low-fg: var(--density-low-fg);
+  --color-density-medium-bg: var(--density-medium-bg);
+  --color-density-medium-fg: var(--density-medium-fg);
+  --color-density-high-bg: var(--density-high-bg);
+  --color-density-high-fg: var(--density-high-fg);
+  --color-density-full-bg: var(--density-full-bg);
+  --color-density-full-fg: var(--density-full-fg);
+  --font-sans: var(--font-anuphan);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #17140f;
+    --surface: #211d18;
+    --surface-muted: #2a251e;
+    --border: #3a342b;
+    --foreground: #f3efe9;
+    --muted-foreground: #b3a99a;
+
+    --brand: #f0a0c2;
+    --brand-soft: #de5c8e;
+    --brand-foreground: #241019;
+
+    --density-low-bg: #163a26;
+    --density-low-fg: #7bdba0;
+    --density-medium-bg: #402c0c;
+    --density-medium-fg: #f3c266;
+    --density-high-bg: #442712;
+    --density-high-fg: #f7ab74;
+    --density-full-bg: #451a1c;
+    --density-full-fg: #f79a9f;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Consistent, visible focus ring everywhere (ADR-002: no component lib supplies this). */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Respect reduced-motion for the skeleton pulse and every hover/transition in the app. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes pulse-bg {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.skeleton {
+  animation: pulse-bg 1.5s ease-in-out infinite;
+  background-color: var(--color-surface-muted);
+  border-radius: 0.5rem;
+}
