@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: seat
+      POSTGRES_PASSWORD: seat
+      POSTGRES_DB: seatfinder
+    ports:
+      - "5432:5432"
+    volumes:
+      - seatfinder-pgdata:/var/lib/postgresql/data
+
+volumes:
+  seatfinder-pgdata:
