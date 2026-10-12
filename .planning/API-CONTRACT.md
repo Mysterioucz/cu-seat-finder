@@ -23,7 +23,8 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 - `POST /api/auth/admin/login` `{email, password}` → `{token, user}` (bcrypt; seed `admin@cu.ac.th` / `admin123`).
 - `POST /api/auth/logout` → 204 (stateless; client drops token).
 - `GET /api/users/me`, `PATCH /api/users/me` `{name?, language?}` (auth).
-- `GET /api/users/{id}` → `{id, name, role, student_id, active_penalty: bool}` (internal viewProfile).
+- `GET /api/users/{id}` → `{id, name, role, student_id, active_penalty: bool}` (internal viewProfile). `active_penalty` = the user has an unexpired row in `users.penalties`.
+- Consumes `reservation.no_show` (RabbitMQ, see Events) → inserts a 7-day penalty keyed by `reservation_id`, so redelivery is a no-op.
 - User: `{id, student_id?, email?, name, role, language: "th"|"en", created_at}`.
 
 ## Library service (gRPC :9082) — full CRUD
@@ -50,7 +51,9 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 - `GET /api/reservations?status=pending` (admin) → `[Reservation]`.
 - `POST /api/reservations/{id}/accept` (admin) → sets `accepted`, generates `reference` (e.g. `CU-7F3K9Q`) and `checkin_deadline` = start_time + 15min.
 - `POST /api/reservations/{id}/reject` (admin), `POST /api/reservations/{id}/cancel` (owner).
-- Reservation: `{id, user_id, room_id, start_time, end_time, status: pending|accepted|rejected|cancelled, reference?, checkin_deadline?, created_at}`. Frontend renders QR from `reference` + countdown to `checkin_deadline`.
+- `POST /api/reservations/checkin` `{reference}` (admin; staff scan the student's QR) → sets `checked_in_at`. Window: start_time − 15min … `checkin_deadline`. Errors: 404 `not_found`, 409 `already_checked_in` / `not_checkable` / `checkin_window`.
+- No-show sweeper: every `NOSHOW_INTERVAL` (default 1m), accepted bookings past `checkin_deadline` with no check-in are published as `reservation.no_show`, then set to `no_show` (publish first, then update; see Events).
+- Reservation: `{id, user_id, room_id, start_time, end_time, status: pending|accepted|rejected|cancelled|no_show, reference?, checkin_deadline?, checked_in_at?, created_at}`. Frontend renders QR from `reference` + countdown to `checkin_deadline`.
 
 ## Review service (8085)
 - `GET /api/reviews?library_id=` → `{average: number, count: int, items: [Review]}` (hidden reviews excluded unless admin).
@@ -61,3 +64,9 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 - `GET /api/reviews/flagged` (admin, all reviews, hidden first — moderation queue), `PATCH /api/reviews/{id}/moderate` `{hidden: bool}` (admin).
 - Review: `{id, library_id, user_id, user_name, rating, tags, comment, hidden, created_at}`. Tags stored as JSONB.
 - Allowed tags: `quiet, noisy, cold, hot, strong_wifi, weak_wifi, clean, many_outlets, crowded`.
+
+## Events (RabbitMQ, ADR-007)
+- Broker: `RABBITMQ_URL` (default `amqp://seat:seat@localhost:5672/`), started by `docker compose`. Management UI on :15672.
+- Topology (declared by both publisher and consumer in `backend/internal/broker`): topic exchange `reservation.events`; queue `user.reservation-no-show` bound to `reservation.no_show`; rejected messages dead-letter to `reservation.events.dlx` → `reservation.events.dlq`.
+- `reservation.no_show` (Reservation → User): `{reservation_id, user_id, room_id, start_time, checkin_deadline}`, persistent, `message_id = "no_show:<reservation_id>"`.
+- Delivery is at-least-once: the publisher waits for the broker confirm before marking the row `no_show`, and the consumer dedupes on `reservation_id`. Malformed events or unknown users go to the DLQ; transient failures (DB down) are requeued.

@@ -23,6 +23,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/reservations/{id}/accept", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.accept)))
 	mux.Handle("POST /api/reservations/{id}/reject", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.reject)))
 	mux.Handle("POST /api/reservations/{id}/cancel", authn.Require(s.jwtSecret)(http.HandlerFunc(s.cancel)))
+	mux.Handle("POST /api/reservations/checkin", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.checkIn)))
 }
 
 type profile struct {
@@ -266,4 +267,51 @@ func (s *server) cancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+type checkInReq struct {
+	Reference string `json:"reference"`
+}
+
+// checkIn is called when library staff scan the QR on a student's ticket
+// (it encodes the booking reference). Once checked in, the no-show sweeper
+// skips the booking. The window check uses the DB clock, the same clock the
+// sweeper compares checkin_deadline against. The window opens 15 minutes
+// before start_time and closes at checkin_deadline.
+func (s *server) checkIn(w http.ResponseWriter, r *http.Request) {
+	var req checkInReq
+	if err := httpx.DecodeJSON(r, &req); err != nil || req.Reference == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "reference required")
+		return
+	}
+	row := s.db.QueryRow(r.Context(), `
+		UPDATE reservation.reservations SET checked_in_at = now()
+		WHERE reference=$1 AND status='accepted' AND checked_in_at IS NULL
+		AND now() BETWEEN start_time - interval '15 minutes' AND checkin_deadline
+		RETURNING `+reservationCols, req.Reference)
+	res, err := scanReservation(row)
+	if err == nil {
+		httpx.WriteJSON(w, http.StatusOK, res)
+		return
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not check in")
+		return
+	}
+
+	// Nothing updated: look the booking up to say why.
+	res, err = scanReservation(s.db.QueryRow(r.Context(),
+		"SELECT "+reservationCols+" FROM reservation.reservations WHERE reference=$1", req.Reference))
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "no reservation with that reference")
+	case err != nil:
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load reservation")
+	case res.CheckedInAt != nil:
+		httpx.WriteError(w, http.StatusConflict, "already_checked_in", "reservation is already checked in")
+	case res.Status != "accepted":
+		httpx.WriteError(w, http.StatusConflict, "not_checkable", "reservation is "+res.Status)
+	default:
+		httpx.WriteError(w, http.StatusConflict, "checkin_window", "outside the check-in window")
+	}
 }

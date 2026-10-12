@@ -1,6 +1,7 @@
 // Reservation service: meeting room booking, quota, and check-in reference.
 // Owns /api/reservations. Schema: reservation. Collaborates with Library
-// (room validation, ADR-006 row locking) and User (quota/penalty check).
+// (room validation, ADR-006 row locking) and User (quota/penalty check), and
+// publishes no-show events to RabbitMQ for User to apply penalties (ADR-007).
 // See API-CONTRACT.md.
 package main
 
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	pb "github.com/cu-seat-finder/backend/gen/library/v1"
+	"github.com/cu-seat-finder/backend/internal/broker"
 	"github.com/cu-seat-finder/backend/internal/dbx"
 	"github.com/cu-seat-finder/backend/internal/httpx"
 	"github.com/cu-seat-finder/backend/internal/libraryclient"
@@ -30,6 +32,11 @@ func main() {
 	jwtSecret := getenv("JWT_SECRET", "dev-secret")
 	port := getenv("PORT", "8084")
 	userURL := getenv("USER_URL", "http://localhost:8081")
+	rabbitURL := getenv("RABBITMQ_URL", "amqp://seat:seat@localhost:5672/")
+	noShowInterval, err := time.ParseDuration(getenv("NOSHOW_INTERVAL", "1m"))
+	if err != nil || noShowInterval <= 0 {
+		log.Fatalf("NOSHOW_INTERVAL must be a positive duration like 1m or 30s")
+	}
 
 	pool, err := dbx.Connect(databaseURL)
 	if err != nil {
@@ -43,7 +50,13 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	srv := &server{db: pool, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL}
+	events := broker.NewPublisher(rabbitURL)
+	defer events.Close()
+
+	srv := &server{db: pool, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL,
+		events: events, noShowInterval: noShowInterval}
+	go srv.noShowLoop(context.Background())
+
 	mux := http.NewServeMux()
 	srv.routes(mux)
 
@@ -56,4 +69,7 @@ type server struct {
 	jwtSecret string
 	library   pb.LibraryServiceClient
 	userURL   string
+
+	events         *broker.Publisher
+	noShowInterval time.Duration
 }

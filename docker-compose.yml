@@ -10,5 +10,22 @@ services:
     volumes:
       - seatfinder-pgdata:/var/lib/postgresql/data
 
+  # Message broker for async events between services (ADR-007).
+  # Management UI: http://localhost:15672 (seat / seat)
+  rabbitmq:
+    image: rabbitmq:4-management
+    # Fixed hostname: RabbitMQ keeps its data under the node name, so a new
+    # container would otherwise start with empty queues.
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: seat
+      RABBITMQ_DEFAULT_PASS: seat
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - seatfinder-rabbitmq:/var/lib/rabbitmq
+
 volumes:
   seatfinder-pgdata:
+  seatfinder-rabbitmq:
