@@ -141,6 +141,7 @@ const dict = {
   "reservations.status.accepted": { th: "ยืนยันแล้ว", en: "Accepted" },
   "reservations.status.rejected": { th: "ถูกปฏิเสธ", en: "Rejected" },
   "reservations.status.cancelled": { th: "ยกเลิกแล้ว", en: "Cancelled" },
+  "reservations.status.no_show": { th: "ไม่มาเช็คอิน", en: "No-show" },
   "reservations.checkinBy": { th: "เช็คอินภายใน", en: "Check in within" },
   "reservations.expired": { th: "หมดเวลาเช็คอินแล้ว", en: "Check-in window expired" },
   "reservations.cancel": { th: "ยกเลิกการจอง", en: "Cancel booking" },

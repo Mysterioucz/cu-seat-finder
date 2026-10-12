@@ -47,7 +47,7 @@ export type OccupancyResponse = {
   suggestion: Occupancy | null;
 };
 
-export type ReservationStatus = "pending" | "accepted" | "rejected" | "cancelled";
+export type ReservationStatus = "pending" | "accepted" | "rejected" | "cancelled" | "no_show";
 
 export type Reservation = {
   id: string;
@@ -58,6 +58,7 @@ export type Reservation = {
   status: ReservationStatus;
   reference?: string;
   checkin_deadline?: string;
+  checked_in_at?: string;
   created_at: string;
 };
 

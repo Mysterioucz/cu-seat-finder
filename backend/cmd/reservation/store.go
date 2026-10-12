@@ -32,13 +32,15 @@ func migrate(ctx context.Context, db *pgxpool.Pool) error {
 			start_time timestamptz NOT NULL,
 			end_time timestamptz NOT NULL,
 			status text NOT NULL DEFAULT 'pending'
-				CHECK (status IN ('pending','accepted','rejected','cancelled')),
+				CHECK (status IN ('pending','accepted','rejected','cancelled','no_show')),
 			reference text,
 			checkin_deadline timestamptz,
+			checked_in_at timestamptz,
 			created_at timestamptz NOT NULL DEFAULT now(),
 			during tstzrange GENERATED ALWAYS AS (tstzrange(start_time, end_time, '[)')) STORED,
 			EXCLUDE USING gist (room_id WITH =, during WITH &&) WHERE (status IN ('pending','accepted'))
 		);
+		CREATE UNIQUE INDEX IF NOT EXISTS reservations_reference_key ON reservation.reservations (reference);
 	`)
 	return err
 }
@@ -52,14 +54,15 @@ type Reservation struct {
 	Status          string     `json:"status"`
 	Reference       *string    `json:"reference,omitempty"`
 	CheckinDeadline *time.Time `json:"checkin_deadline,omitempty"`
+	CheckedInAt     *time.Time `json:"checked_in_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 }
 
-const reservationCols = "id, user_id, room_id, start_time, end_time, status, reference, checkin_deadline, created_at"
+const reservationCols = "id, user_id, room_id, start_time, end_time, status, reference, checkin_deadline, checked_in_at, created_at"
 
 func scanReservation(row interface{ Scan(dest ...any) error }) (Reservation, error) {
 	var res Reservation
 	err := row.Scan(&res.ID, &res.UserID, &res.RoomID, &res.StartTime, &res.EndTime,
-		&res.Status, &res.Reference, &res.CheckinDeadline, &res.CreatedAt)
+		&res.Status, &res.Reference, &res.CheckinDeadline, &res.CheckedInAt, &res.CreatedAt)
 	return res, err
 }

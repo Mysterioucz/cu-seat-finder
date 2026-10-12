@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/rabbitmq/amqp091-go v1.15.0
 	go.mongodb.org/mongo-driver/v2 v2.9.2
 	golang.org/x/crypto v0.57.0
 	google.golang.org/grpc v1.84.0
