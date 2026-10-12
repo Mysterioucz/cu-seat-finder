@@ -36,7 +36,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Library Service: source of truth for library, floor, zone and meeting-room
-// master data. gRPC-only (ADR-007). Read RPCs are open; Create/Update/Delete
+// master data. gRPC-only (ADR-003). Read RPCs are open; Create/Update/Delete
 // require metadata "authorization: Bearer <JWT>" with role=admin, else
 // PERMISSION_DENIED (or UNAUTHENTICATED if missing/invalid).
 // Errors: NOT_FOUND for unknown ids, INVALID_ARGUMENT for bad input,
@@ -167,7 +167,7 @@ func (c *libraryServiceClient) DeleteRoom(ctx context.Context, in *DeleteRoomReq
 // for forward compatibility.
 //
 // Library Service: source of truth for library, floor, zone and meeting-room
-// master data. gRPC-only (ADR-007). Read RPCs are open; Create/Update/Delete
+// master data. gRPC-only (ADR-003). Read RPCs are open; Create/Update/Delete
 // require metadata "authorization: Bearer <JWT>" with role=admin, else
 // PERMISSION_DENIED (or UNAUTHENTICATED if missing/invalid).
 // Errors: NOT_FOUND for unknown ids, INVALID_ARGUMENT for bad input,

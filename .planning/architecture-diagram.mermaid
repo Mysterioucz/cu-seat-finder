@@ -1,3 +1,7 @@
+---
+config:
+  layout: elk
+---
 flowchart LR
 
     %% Actors (people, not components)
@@ -10,14 +14,16 @@ flowchart LR
     end
 
     subgraph Services["CU SeatFinder services (Go, ADR-003)"]
-        User["User Service<br/><small>Auth, profile, JWT</small>"]
+        User["User Service<br/><small>Auth, profile, JWT, penalties</small>"]
         Library["Library Service · gRPC<br/><small>Libraries, rooms · full CRUD</small>"]
         Occupancy["Occupancy Service<br/><small>Polls, calculates</small>"]
-        Reservation["Reservation Service<br/><small>Booking, quota, QR</small>"]
+        Reservation["Reservation Service<br/><small>Booking, quota, QR check-in, no-show</small>"]
         Review["Review Service · REST<br/><small>Ratings, moderation · full CRUD</small>"]
+        MQ[["RabbitMQ · message broker<br/><small>exchange reservation.events<br/>queue user.reservation-no-show + DLQ<br/>ADR-007</small>"]]
     end
 
-    DB[("PostgreSQL · Prisma Postgres<br/><small>ADR-006, ADR-008<br/>schemas: users · library · occupancy<br/>reservation · review<br/>each service owns its schema only</small>")]
+    DB[("PostgreSQL · Prisma Postgres<br/><small>ADR-006<br/>schemas: users · library<br/>occupancy · reservation<br/>each service owns its schema only</small>")]
+    Mongo[("MongoDB · MongoDB Atlas<br/><small>ADR-006<br/>collection seatfinder.reviews<br/>Review Service only</small>")]
 
     SSO["CU SSO · OIDC Provider<br/><small>External · mock IdP in dev, ADR-004</small>"]
     Turnstile["Library Turnstile Systems<br/><small>External · polled, ADR-005</small>"]
@@ -34,7 +40,7 @@ flowchart LR
     BFF -- "REST /api/reservations" --> Reservation
     BFF -- "REST /api/reviews" --> Review
 
-    %% Internal service-to-service (gRPC to Library, REST to User, ADR-007)
+    %% Internal service-to-service, synchronous (gRPC to Library, REST to User)
     Review -- "REST: viewProfile" --> User
     Review == "gRPC: GetLibrary" ==> Library
     Reservation -- "REST: viewProfile" --> User
@@ -42,11 +48,18 @@ flowchart LR
     Occupancy == "gRPC: GetLibrary" ==> Library
 
     %% Each service reads/writes only its own schema
-    Services -- "SQL (pgx), schema-per-service" --> DB
+    Services -- "SQL (pgx): User, Library, Occupancy, Reservation" --> DB
 
     %% External integrations
     User -. "OIDC login" .-> SSO
     Occupancy -. "poll (time.Ticker)" .-> Turnstile
+
+    %% Asynchronous events through the broker (ADR-007)
+    Reservation -. "async: publish reservation.no_show" .-> MQ
+    MQ -. "async: consume → apply penalty" .-> User
+
+    %% Review owns a MongoDB collection instead of a Postgres schema (ADR-006)
+    Review -- "MongoDB driver" --> Mongo
 
     classDef actor fill:#FFFFFF,stroke:#993C1D,color:#712B13
     classDef client fill:#FFFFFF,stroke:#5F5E5A,color:#444441
@@ -54,15 +67,18 @@ flowchart LR
     classDef core fill:#E1F5EE,stroke:#0F6E56,color:#085041
     classDef db fill:#E6F1FB,stroke:#185FA5,color:#0C447C
     classDef external fill:#F1EFE8,stroke:#5F5E5A,color:#444441
+    classDef broker fill:#FDF0E6,stroke:#B4530F,color:#7A3509
 
     class Customer,Admin actor
     class Browser,BFF client
     class Review,Reservation,Occupancy caller
     class User,Library core
-    class DB db
+    class DB,Mongo db
     class SSO,Turnstile external
+    class MQ broker
 
     style Edge fill:#FAECE7,stroke:#993C1D,stroke-dasharray:5 3
     style Services fill:#F7F6F2,stroke:#5F5E5A,stroke-dasharray:5 3
 
     linkStyle 4,9,11,12 stroke:#3B6D11,stroke-width:2px
+    linkStyle 16,17 stroke:#B4530F,stroke-width:2px
