@@ -3,25 +3,20 @@ package main
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// ponytail: CREATE SCHEMA/TABLE IF NOT EXISTS on boot instead of a migration tool.
-// Upgrade path once schema changes get non-trivial: golang-migrate.
-func migrate(ctx context.Context, db *pgxpool.Pool) error {
-	_, err := db.Exec(ctx, `
-		CREATE SCHEMA IF NOT EXISTS review;
-		CREATE TABLE IF NOT EXISTS review.reviews (
-			id text PRIMARY KEY,
-			library_id text NOT NULL,
-			user_id text NOT NULL,
-			user_name text NOT NULL,
-			rating int NOT NULL CHECK (rating BETWEEN 1 AND 5),
-			tags jsonb NOT NULL DEFAULT '[]',
-			comment text,
-			hidden boolean NOT NULL DEFAULT false,
-			created_at timestamptz NOT NULL DEFAULT now()
-		);
-	`)
+// Reviews live in MongoDB (collection `reviews`), one document per review with
+// tags embedded as an array — the variable tag payload is why this service left
+// Postgres. No cross-document invariant exists here, so no transactions needed.
+//
+// ponytail: indexes are created idempotently on boot instead of a migration tool.
+func ensureIndexes(ctx context.Context, coll *mongo.Collection) error {
+	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
+		// GET /api/reviews?library_id=… (public list, newest first)
+		{Keys: bson.D{{Key: "library_id", Value: 1}, {Key: "hidden", Value: 1}, {Key: "created_at", Value: -1}}},
+		// ponytail: no index for the admin queue (capped at 200); add {hidden:-1, created_at:-1} when it gets slow
+	})
 	return err
 }

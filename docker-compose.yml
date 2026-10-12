@@ -10,6 +10,14 @@ services:
     volumes:
       - seatfinder-pgdata:/var/lib/postgresql/data
 
+  # Review service store (ADR-006 amendment: reviews are document-shaped)
+  mongo:
+    image: mongo:8
+    ports:
+      - "27018:27017"   # host 27018: avoids clashing with a locally installed mongod
+    volumes:
+      - seatfinder-mongodata:/data/db
+
   # Message broker for async events between services (ADR-007).
   # Management UI: http://localhost:15672 (seat / seat)
   rabbitmq:
@@ -28,4 +36,5 @@ services:
 
 volumes:
   seatfinder-pgdata:
+  seatfinder-mongodata:
   seatfinder-rabbitmq:

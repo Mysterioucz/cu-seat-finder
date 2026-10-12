@@ -1,5 +1,5 @@
 // Review service: ratings, tags, and moderation for libraries.
-// Owns /api/reviews. Schema: review. Collaborates with Library (validate
+// Owns /api/reviews. Store: MongoDB collection `reviews`. Collaborates with Library (validate
 // library exists) and User (attach reviewer name). See API-CONTRACT.md.
 package main
 
@@ -14,7 +14,7 @@ import (
 	"github.com/cu-seat-finder/backend/internal/dbx"
 	"github.com/cu-seat-finder/backend/internal/httpx"
 	"github.com/cu-seat-finder/backend/internal/libraryclient"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 func getenv(key, def string) string {
@@ -25,24 +25,24 @@ func getenv(key, def string) string {
 }
 
 func main() {
-	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5432/seatfinder")
+	mongoURL := getenv("MONGO_URL", "mongodb://localhost:27018")
 	jwtSecret := getenv("JWT_SECRET", "dev-secret")
 	port := getenv("PORT", "8085")
 	userURL := getenv("USER_URL", "http://localhost:8081")
 
-	pool, err := dbx.Connect(databaseURL)
+	client, err := dbx.ConnectMongo(mongoURL)
 	if err != nil {
-		log.Fatalf("db connect: %v", err)
+		log.Fatalf("mongo connect: %v", err)
 	}
-	defer pool.Close()
+	reviews := client.Database("seatfinder").Collection("reviews")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := migrate(ctx, pool); err != nil {
-		log.Fatalf("migrate: %v", err)
+	if err := ensureIndexes(ctx, reviews); err != nil {
+		log.Fatalf("indexes: %v", err)
 	}
 
-	srv := &server{db: pool, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL}
+	srv := &server{reviews: reviews, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL}
 	mux := http.NewServeMux()
 	srv.routes(mux)
 
@@ -51,7 +51,7 @@ func main() {
 }
 
 type server struct {
-	db        *pgxpool.Pool
+	reviews   *mongo.Collection
 	jwtSecret string
 	library   pb.LibraryServiceClient
 	userURL   string

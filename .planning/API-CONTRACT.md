@@ -14,7 +14,7 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 
 - No separate Go gateway: Next.js is the BFF. `rewrites` in `frontend/next.config.ts` forward REST prefixes to their service; for the gRPC-only Library service, Next.js **route handlers** under `src/app/api/libraries` and `src/app/api/rooms` translate REST↔gRPC (browser only ever talks to :3000).
 - Transport (ADR-007): browser→BFF is REST; **Library Service is gRPC** (`proto/library/v1/library.proto`) and every service-to-Library call (Occupancy, Reservation, Review, Next.js server) uses gRPC. Other service-to-service calls (→ User) stay REST.
-- One local Postgres (docker compose, `postgres://seat:seat@localhost:5432/seatfinder`), one schema per service. Services never read another service's schema; they call each other over HTTP (collaborations below).
+- One local Postgres (docker compose, `postgres://seat:seat@localhost:5432/seatfinder`), one schema per service — except Review, which owns a MongoDB collection (`mongodb://localhost:27018`, db `seatfinder`, collection `reviews`). Services never read another service's schema; they call each other over HTTP (collaborations below).
 - Auth: JWT HS256, secret `JWT_SECRET` (dev default `dev-secret`). Header `Authorization: Bearer <token>`. Claims: `sub` (user id), `role` (`customer`|`admin`), `name`, `exp`.
 - JSON everywhere, snake_case fields, timestamps RFC3339. Errors: `{"error": "<code>", "message": "<human text>"}` with proper status.
 

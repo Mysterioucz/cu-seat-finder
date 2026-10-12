@@ -1,6 +1,8 @@
 # CU SeatFinder backend
 
-Five small Go services, one Postgres database (one schema per service). No
+Five small Go services. User, Library, Occupancy and Reservation share one
+Postgres database (one schema per service); **Review stores its data in MongoDB**
+(collection `seatfinder.reviews`). No
 gateway — the Next.js frontend proxies REST `/api/*` to the right port via
 `next.config.ts` rewrites. The **Library service is gRPC-only**
 (`proto/library/v1/library.proto`, full CRUD); Occupancy, Reservation and Review
@@ -10,14 +12,14 @@ See `.planning/API-CONTRACT.md` for the full API.
 ## Run it
 
 ```
-make db     # starts Postgres + RabbitMQ in Docker (repo-root docker-compose.yml)
+make db     # starts Postgres + MongoDB + RabbitMQ in Docker (repo-root docker-compose.yml)
 make run    # starts all 5 services, Ctrl-C stops all of them
 make test   # go test ./... (pure-logic tests, no DB needed)
 make build  # go build ./...
 make proto  # regenerate gen/ from ../proto (needs buf + protoc-gen-go + protoc-gen-go-grpc; gen/ is committed)
 ```
 
-Copy `.env.example` to `.env` to override defaults (DB URL, JWT secret, ports).
+Copy `.env.example` to `.env` to override defaults (DB URL, Mongo URL, JWT secret, ports).
 
 ## Ports
 
@@ -29,7 +31,7 @@ Copy `.env.example` to `.env` to override defaults (DB URL, JWT secret, ports).
 | reservation | 8084 | /api/reservations              |
 | review      | 8085 | /api/reviews                   |
 
-Each service creates its own schema/tables and seeds data on startup
+Each Postgres service creates its own schema/tables and seeds data on startup
 (`CREATE SCHEMA/TABLE IF NOT EXISTS`, idempotent seed inserts) — no separate
 migration step for dev. See the `ponytail:` comments in each `store.go` for
 the upgrade path (golang-migrate) once schemas stop being this simple.
@@ -92,6 +94,19 @@ Writes without a token return `Unauthenticated`; with a customer token, `Permiss
 `GET /api/reviews/{id}`, `PUT /api/reviews/{id}` (author only), `DELETE /api/reviews/{id}`
 (author or admin, 204), alongside the existing list/create/moderate routes. The
 average is computed on read, so edits and deletes are reflected immediately.
+
+## Why Review uses MongoDB
+
+ADR-006 rejected MongoDB because it cannot enforce the no-double-booking rule
+across documents — that argument applies to **Reservation**, which stays on
+Postgres. Reviews have no cross-document invariant: each review is a
+self-contained document with a variable `tags` array, the average rating is
+computed on read, and all access is by `library_id` or `_id`. So the Review
+service now owns a MongoDB collection instead of the `review` Postgres schema.
+An index on `library_id+hidden+created_at` (public list) is created on
+boot. The REST contract is unchanged.
+
+Inspect data: `docker compose exec mongo mongosh seatfinder --eval 'db.reviews.find()'`
 
 ## Seed accounts
 
