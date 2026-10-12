@@ -82,7 +82,7 @@ Postgres. Reviews have no cross-document invariant: each review is a
 self-contained document with a variable `tags` array, the average rating is
 computed on read, and all access is by `library_id` or `_id`. So the Review
 service now owns a MongoDB collection instead of the `review` Postgres schema.
-Indexes (`library_id+hidden+created_at`, `hidden+created_at`) are created on
+An index on `library_id+hidden+created_at` (public list) is created on
 boot. The REST contract is unchanged.
 
 Inspect data: `docker compose exec mongo mongosh seatfinder --eval 'db.reviews.find()'`

@@ -33,7 +33,7 @@ Accepted (amended: Review service moved from PostgreSQL to MongoDB)
 
 - Row-level locking inside a transaction still enforces the no-double-booking rule for reservations in UC-02; Reservation stays on PostgreSQL for this reason.
 - Each review is one document with its tags embedded as an array, so adding a new tag type or field needs no schema migration.
-- Review indexes (`library_id + hidden + created_at` and `hidden + created_at`) are created by the Review service on startup. No migration tool is needed on the MongoDB side.
+- The Review service creates its index (`library_id + hidden + created_at`, for the public review list) on startup. No migration tool is needed on the MongoDB side.
 - The team now runs and backs up two database engines instead of one, and must learn MongoDB queries alongside SQL.
 - Review data can no longer be joined with SQL against other tables. This was already forbidden by the one-schema-per-service rule, so nothing that worked before is lost.
 - The Review REST API (`/api/reviews`) is unchanged, so the frontend and other services are not affected.

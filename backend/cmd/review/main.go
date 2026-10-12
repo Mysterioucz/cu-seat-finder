@@ -26,7 +26,6 @@ func getenv(key, def string) string {
 
 func main() {
 	mongoURL := getenv("MONGO_URL", "mongodb://localhost:27018")
-	mongoDB := getenv("MONGO_DB", "seatfinder")
 	jwtSecret := getenv("JWT_SECRET", "dev-secret")
 	port := getenv("PORT", "8085")
 	userURL := getenv("USER_URL", "http://localhost:8081")
@@ -35,8 +34,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("mongo connect: %v", err)
 	}
-	defer client.Disconnect(context.Background())
-	reviews := client.Database(mongoDB).Collection("reviews")
+	reviews := client.Database("seatfinder").Collection("reviews")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

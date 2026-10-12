@@ -23,7 +23,7 @@ func getenv(key, def string) string {
 }
 
 func main() {
-	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5433/seatfinder")
+	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5432/seatfinder")
 	port := getenv("GRPC_PORT", "9082")
 	jwtSecret := getenv("JWT_SECRET", "dev-secret")
 

@@ -16,8 +16,7 @@ func ensureIndexes(ctx context.Context, coll *mongo.Collection) error {
 	_, err := coll.Indexes().CreateMany(ctx, []mongo.IndexModel{
 		// GET /api/reviews?library_id=… (public list, newest first)
 		{Keys: bson.D{{Key: "library_id", Value: 1}, {Key: "hidden", Value: 1}, {Key: "created_at", Value: -1}}},
-		// GET /api/reviews/flagged (admin queue, hidden first)
-		{Keys: bson.D{{Key: "hidden", Value: -1}, {Key: "created_at", Value: -1}}},
+		// ponytail: no index for the admin queue (capped at 200); add {hidden:-1, created_at:-1} when it gets slow
 	})
 	return err
 }

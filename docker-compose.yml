@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: seat
       POSTGRES_DB: seatfinder
     ports:
-      - "5433:5432"   # host 5433: avoids clashing with a locally installed postgres
+      - "5432:5432"
     volumes:
       - seatfinder-pgdata:/var/lib/postgresql/data
 

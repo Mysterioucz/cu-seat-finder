@@ -39,13 +39,6 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/reviews/{id}/moderate", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.moderate)))
 }
 
-// normalize keeps the JSON contract: tags is always an array, never null.
-func normalize(rv *Review) {
-	if rv.Tags == nil {
-		rv.Tags = []string{}
-	}
-}
-
 // findAll runs a query and decodes every matching review.
 func (s *server) findAll(ctx context.Context, filter bson.D, opts *options.FindOptionsBuilder) ([]Review, error) {
 	cur, err := s.reviews.Find(ctx, filter, opts)
@@ -55,9 +48,6 @@ func (s *server) findAll(ctx context.Context, filter bson.D, opts *options.FindO
 	items := []Review{}
 	if err := cur.All(ctx, &items); err != nil {
 		return nil, err
-	}
-	for i := range items {
-		normalize(&items[i])
 	}
 	return items, nil
 }
@@ -106,6 +96,9 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
 		return
 	}
+	if req.Tags == nil {
+		req.Tags = []string{}
+	}
 	if !validBody(w, req.Rating, req.Tags, req.Comment) {
 		return
 	}
@@ -141,7 +134,6 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 		// BSON dates are millisecond precision; truncate so the response matches what is stored.
 		CreatedAt: time.Now().UTC().Truncate(time.Millisecond),
 	}
-	normalize(&rv)
 	if _, err := s.reviews.InsertOne(ctx, rv); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not create review")
 		return
@@ -170,7 +162,6 @@ func canDelete(role, callerID, ownerID string) bool { return role == "admin" || 
 func (s *server) find(r *http.Request) (Review, error) {
 	var rv Review
 	err := s.reviews.FindOne(r.Context(), bson.D{{Key: "_id", Value: r.PathValue("id")}}).Decode(&rv)
-	normalize(&rv)
 	return rv, err
 }
 
@@ -220,21 +211,19 @@ func (s *server) update(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
 		return
 	}
+	if req.Tags == nil {
+		req.Tags = []string{}
+	}
 	if !validBody(w, req.Rating, req.Tags, req.Comment) {
 		return
 	}
-	tags := req.Tags
-	if tags == nil {
-		tags = []string{}
-	}
 	update := bson.D{{Key: "$set", Value: bson.D{
 		{Key: "rating", Value: req.Rating},
-		{Key: "tags", Value: tags},
+		{Key: "tags", Value: req.Tags},
 		{Key: "comment", Value: req.Comment},
 	}}}
 	err = s.reviews.FindOneAndUpdate(r.Context(), bson.D{{Key: "_id", Value: rv.ID}}, update,
 		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&rv)
-	normalize(&rv)
 	if writeFindErr(w, err) {
 		return
 	}
