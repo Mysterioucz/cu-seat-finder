@@ -23,6 +23,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.Handle("POST /api/reservations/{id}/accept", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.accept)))
 	mux.Handle("POST /api/reservations/{id}/reject", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.reject)))
 	mux.Handle("POST /api/reservations/{id}/cancel", authn.Require(s.jwtSecret)(http.HandlerFunc(s.cancel)))
+	mux.Handle("POST /api/reservations/checkin", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.checkIn)))
 }
 
 type profile struct {
@@ -263,6 +264,39 @@ func (s *server) cancel(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not cancel reservation")
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+type checkInReq struct {
+	Reference string `json:"reference"`
+}
+
+// checkIn is called when library staff scan the QR on a student's ticket
+// (it encodes the booking reference). Once checked in, the no-show sweeper
+// skips the booking. The window check uses the DB clock, the same clock the
+// sweeper compares checkin_deadline against. The window opens 15 minutes
+// before start_time and closes at checkin_deadline.
+func (s *server) checkIn(w http.ResponseWriter, r *http.Request) {
+	var req checkInReq
+	if err := httpx.DecodeJSON(r, &req); err != nil || req.Reference == "" {
+		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "reference required")
+		return
+	}
+	row := s.db.QueryRow(r.Context(), `
+		UPDATE reservation.reservations SET checked_in_at = now()
+		WHERE reference=$1 AND status='accepted' AND checked_in_at IS NULL
+		AND now() BETWEEN start_time - interval '15 minutes' AND checkin_deadline
+		RETURNING `+reservationCols, req.Reference)
+	res, err := scanReservation(row)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteError(w, http.StatusConflict, "not_checkable",
+			"no accepted, not-yet-checked-in reservation with that reference is inside its check-in window")
+		return
+	}
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not check in")
 		return
 	}
 	httpx.WriteJSON(w, http.StatusOK, res)

@@ -10,7 +10,7 @@ See `.planning/API-CONTRACT.md` for the full API.
 ## Run it
 
 ```
-make db     # starts Postgres in Docker (repo-root docker-compose.yml)
+make db     # starts Postgres + RabbitMQ in Docker (repo-root docker-compose.yml)
 make run    # starts all 5 services, Ctrl-C stops all of them
 make test   # go test ./... (pure-logic tests, no DB needed)
 make build  # go build ./...
@@ -35,6 +35,27 @@ migration step for dev. See the `ponytail:` comments in each `store.go` for
 the upgrade path (golang-migrate) once schemas stop being this simple.
 
 Library address for clients: `LIBRARY_GRPC_ADDR` (default `localhost:9082`).
+
+## Events (RabbitMQ, ADR-007)
+
+Reservation publishes `reservation.no_show` when an accepted booking passes its
+check-in deadline without a check-in; User consumes it and applies a 7-day
+penalty. Both services keep serving HTTP if RabbitMQ is down: the sweeper
+retries on its next tick, the consumer reconnects. Queues are visible at
+http://localhost:15672 (seat / seat). See `internal/broker` and the Events
+section of `.planning/API-CONTRACT.md`.
+
+```
+# admin token, then check a student in by scanning (posting) their reference
+curl -s localhost:8084/api/reservations/checkin -H "authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{"reference":"CU-7F3K9Q"}'
+```
+
+The sweeper runs once a minute.
+
+Schemas are created with `CREATE TABLE IF NOT EXISTS` and never altered, so
+after pulling a schema change (such as this one), reset dev data with
+`docker compose down -v && make db`; services re-seed on startup.
 
 ## Library gRPC demo (grpcurl)
 

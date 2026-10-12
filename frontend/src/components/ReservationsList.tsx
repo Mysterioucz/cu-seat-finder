@@ -17,6 +17,7 @@ const STATUS_STYLE: Record<ReservationStatus, string> = {
   accepted: "bg-density-low-bg text-density-low-fg",
   rejected: "bg-density-full-bg text-density-full-fg",
   cancelled: "bg-surface-muted text-muted-foreground",
+  no_show: "bg-density-full-bg text-density-full-fg",
 };
 
 function CardSkeleton() {

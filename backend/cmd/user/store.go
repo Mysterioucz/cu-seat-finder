@@ -21,9 +21,18 @@ func migrate(ctx context.Context, db *pgxpool.Pool) error {
 			name text NOT NULL,
 			role text NOT NULL CHECK (role IN ('customer','admin')),
 			language text NOT NULL DEFAULT 'th',
-			active_penalty boolean NOT NULL DEFAULT false,
 			created_at timestamptz NOT NULL DEFAULT now()
 		);
+
+		-- One row per penalised booking, written by the no-show consumer
+		-- (ADR-007). reservation_id as the key makes redelivered events no-ops.
+		CREATE TABLE IF NOT EXISTS users.penalties (
+			reservation_id text PRIMARY KEY,
+			user_id text NOT NULL REFERENCES users.users(id) ON DELETE CASCADE,
+			expires_at timestamptz NOT NULL,
+			created_at timestamptz NOT NULL DEFAULT now()
+		);
+		CREATE INDEX IF NOT EXISTS penalties_user_idx ON users.penalties (user_id, expires_at);
 	`)
 	if err != nil {
 		return err
@@ -76,7 +85,10 @@ func scanUser(row interface {
 	return u, err
 }
 
-const userCols = "id, student_id, email, name, role, language, active_penalty, created_at"
+// active_penalty is derived: any penalty that hasn't expired yet.
+const userCols = `id, student_id, email, name, role, language,
+	EXISTS (SELECT 1 FROM users.penalties p WHERE p.user_id = users.users.id AND p.expires_at > now()) AS active_penalty,
+	created_at`
 
 func getUserByID(ctx context.Context, db *pgxpool.Pool, id string) (User, error) {
 	row := db.QueryRow(ctx, "SELECT "+userCols+" FROM users.users WHERE id=$1", id)
