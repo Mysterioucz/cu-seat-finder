@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -12,19 +12,21 @@ import (
 	"github.com/cu-seat-finder/backend/internal/idgen"
 	"github.com/cu-seat-finder/backend/internal/libraryclient"
 	"github.com/cu-seat-finder/backend/internal/svcclient"
-	"github.com/jackc/pgx/v5"
+	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 type Review struct {
-	ID        string    `json:"id"`
-	LibraryID string    `json:"library_id"`
-	UserID    string    `json:"user_id"`
-	UserName  string    `json:"user_name"`
-	Rating    int       `json:"rating"`
-	Tags      []string  `json:"tags"`
-	Comment   string    `json:"comment"`
-	Hidden    bool      `json:"hidden"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string    `json:"id" bson:"_id"`
+	LibraryID string    `json:"library_id" bson:"library_id"`
+	UserID    string    `json:"user_id" bson:"user_id"`
+	UserName  string    `json:"user_name" bson:"user_name"`
+	Rating    int       `json:"rating" bson:"rating"`
+	Tags      []string  `json:"tags" bson:"tags"`
+	Comment   string    `json:"comment" bson:"comment"`
+	Hidden    bool      `json:"hidden" bson:"hidden"`
+	CreatedAt time.Time `json:"created_at" bson:"created_at"`
 }
 
 func (s *server) routes(mux *http.ServeMux) {
@@ -37,49 +39,46 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.Handle("PATCH /api/reviews/{id}/moderate", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.moderate)))
 }
 
-func scanReview(rows interface{ Scan(dest ...any) error }) (Review, error) {
-	var rv Review
-	var tags []byte
-	err := rows.Scan(&rv.ID, &rv.LibraryID, &rv.UserID, &rv.UserName, &rv.Rating, &tags, &rv.Comment, &rv.Hidden, &rv.CreatedAt)
-	if err != nil {
-		return rv, err
-	}
-	_ = json.Unmarshal(tags, &rv.Tags)
+// normalize keeps the JSON contract: tags is always an array, never null.
+func normalize(rv *Review) {
 	if rv.Tags == nil {
 		rv.Tags = []string{}
 	}
-	return rv, nil
 }
 
-const reviewCols = "id, library_id, user_id, user_name, rating, tags, comment, hidden, created_at"
+// findAll runs a query and decodes every matching review.
+func (s *server) findAll(ctx context.Context, filter bson.D, opts *options.FindOptionsBuilder) ([]Review, error) {
+	cur, err := s.reviews.Find(ctx, filter, opts)
+	if err != nil {
+		return nil, err
+	}
+	items := []Review{}
+	if err := cur.All(ctx, &items); err != nil {
+		return nil, err
+	}
+	for i := range items {
+		normalize(&items[i])
+	}
+	return items, nil
+}
 
 func (s *server) list(w http.ResponseWriter, r *http.Request) {
 	libraryID := r.URL.Query().Get("library_id")
 	claims, isAuthed := authn.Optional(s.jwtSecret, r)
 	isAdmin := isAuthed && claims.Role == "admin"
 
-	query := "SELECT " + reviewCols + " FROM review.reviews WHERE library_id=$1"
+	filter := bson.D{{Key: "library_id", Value: libraryID}}
 	if !isAdmin {
-		query += " AND hidden=false"
+		filter = append(filter, bson.E{Key: "hidden", Value: false})
 	}
-	query += " ORDER BY created_at DESC"
-
-	rows, err := s.db.Query(r.Context(), query, libraryID)
+	items, err := s.findAll(r.Context(), filter, options.Find().SetSort(bson.D{{Key: "created_at", Value: -1}}))
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load reviews")
 		return
 	}
-	defer rows.Close()
 
-	items := []Review{}
 	sum := 0
-	for rows.Next() {
-		rv, err := scanReview(rows)
-		if err != nil {
-			httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not scan review")
-			return
-		}
-		items = append(items, rv)
+	for _, rv := range items {
 		sum += rv.Rating
 	}
 	average := 0.0
@@ -131,14 +130,19 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tags, _ := json.Marshal(req.Tags)
-	id := idgen.New()
-	row := s.db.QueryRow(ctx, `
-		INSERT INTO review.reviews (id, library_id, user_id, user_name, rating, tags, comment)
-		VALUES ($1,$2,$3,$4,$5,$6,$7)
-		RETURNING `+reviewCols, id, req.LibraryID, claims.UserID, user.Name, req.Rating, tags, req.Comment)
-	rv, err := scanReview(row)
-	if err != nil {
+	rv := Review{
+		ID:        idgen.New(),
+		LibraryID: req.LibraryID,
+		UserID:    claims.UserID,
+		UserName:  user.Name,
+		Rating:    req.Rating,
+		Tags:      req.Tags,
+		Comment:   req.Comment,
+		// BSON dates are millisecond precision; truncate so the response matches what is stored.
+		CreatedAt: time.Now().UTC().Truncate(time.Millisecond),
+	}
+	normalize(&rv)
+	if _, err := s.reviews.InsertOne(ctx, rv); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not create review")
 		return
 	}
@@ -164,7 +168,10 @@ func validBody(w http.ResponseWriter, rating int, tags []string, comment string)
 func canDelete(role, callerID, ownerID string) bool { return role == "admin" || callerID == ownerID }
 
 func (s *server) find(r *http.Request) (Review, error) {
-	return scanReview(s.db.QueryRow(r.Context(), "SELECT "+reviewCols+" FROM review.reviews WHERE id=$1", r.PathValue("id")))
+	var rv Review
+	err := s.reviews.FindOne(r.Context(), bson.D{{Key: "_id", Value: r.PathValue("id")}}).Decode(&rv)
+	normalize(&rv)
+	return rv, err
 }
 
 // writeFindErr maps a find() failure to 404/500; returns true if it wrote a response.
@@ -172,7 +179,7 @@ func writeFindErr(w http.ResponseWriter, err error) bool {
 	switch {
 	case err == nil:
 		return false
-	case errors.Is(err, pgx.ErrNoRows):
+	case errors.Is(err, mongo.ErrNoDocuments):
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "review not found")
 	default:
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load review")
@@ -216,10 +223,18 @@ func (s *server) update(w http.ResponseWriter, r *http.Request) {
 	if !validBody(w, req.Rating, req.Tags, req.Comment) {
 		return
 	}
-	tags, _ := json.Marshal(req.Tags)
-	row := s.db.QueryRow(r.Context(), `UPDATE review.reviews SET rating=$2, tags=$3, comment=$4 WHERE id=$1 RETURNING `+reviewCols,
-		rv.ID, req.Rating, tags, req.Comment)
-	rv, err = scanReview(row)
+	tags := req.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	update := bson.D{{Key: "$set", Value: bson.D{
+		{Key: "rating", Value: req.Rating},
+		{Key: "tags", Value: tags},
+		{Key: "comment", Value: req.Comment},
+	}}}
+	err = s.reviews.FindOneAndUpdate(r.Context(), bson.D{{Key: "_id", Value: rv.ID}}, update,
+		options.FindOneAndUpdate().SetReturnDocument(options.After)).Decode(&rv)
+	normalize(&rv)
 	if writeFindErr(w, err) {
 		return
 	}
@@ -236,7 +251,7 @@ func (s *server) remove(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusForbidden, "forbidden", "only the author or an admin can delete a review")
 		return
 	}
-	if _, err := s.db.Exec(r.Context(), "DELETE FROM review.reviews WHERE id=$1", rv.ID); err != nil {
+	if _, err := s.reviews.DeleteOne(r.Context(), bson.D{{Key: "_id", Value: rv.ID}}); err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not delete review")
 		return
 	}
@@ -245,20 +260,13 @@ func (s *server) remove(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) flagged(w http.ResponseWriter, r *http.Request) {
 	// ponytail: admin queue = all reviews, hidden first, capped at 200; paginate when volume grows
-	rows, err := s.db.Query(r.Context(), "SELECT "+reviewCols+" FROM review.reviews ORDER BY hidden DESC, created_at DESC LIMIT 200")
+	opts := options.Find().
+		SetSort(bson.D{{Key: "hidden", Value: -1}, {Key: "created_at", Value: -1}}).
+		SetLimit(200)
+	items, err := s.findAll(r.Context(), bson.D{}, opts)
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load flagged reviews")
 		return
-	}
-	defer rows.Close()
-	items := []Review{}
-	for rows.Next() {
-		rv, err := scanReview(rows)
-		if err != nil {
-			httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not scan review")
-			return
-		}
-		items = append(items, rv)
 	}
 	httpx.WriteJSON(w, http.StatusOK, items)
 }
@@ -274,12 +282,13 @@ func (s *server) moderate(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "invalid JSON body")
 		return
 	}
-	tag, err := s.db.Exec(r.Context(), "UPDATE review.reviews SET hidden=$2 WHERE id=$1", id, req.Hidden)
+	res, err := s.reviews.UpdateOne(r.Context(), bson.D{{Key: "_id", Value: id}},
+		bson.D{{Key: "$set", Value: bson.D{{Key: "hidden", Value: req.Hidden}}}})
 	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not moderate review")
 		return
 	}
-	if tag.RowsAffected() == 0 {
+	if res.MatchedCount == 0 {
 		httpx.WriteError(w, http.StatusNotFound, "not_found", "review not found")
 		return
 	}

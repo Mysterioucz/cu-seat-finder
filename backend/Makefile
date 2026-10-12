@@ -1,12 +1,14 @@
 -include .env
 
-DATABASE_URL ?= postgres://seat:seat@localhost:5432/seatfinder
+DATABASE_URL ?= postgres://seat:seat@localhost:5433/seatfinder
+MONGO_URL ?= mongodb://localhost:27018
+MONGO_DB ?= seatfinder
 JWT_SECRET ?= dev-secret
 USER_URL ?= http://localhost:8081
 LIBRARY_GRPC_ADDR ?= localhost:9082
 POLL_INTERVAL ?= 30
 
-export DATABASE_URL JWT_SECRET USER_URL LIBRARY_GRPC_ADDR POLL_INTERVAL
+export DATABASE_URL MONGO_URL MONGO_DB JWT_SECRET USER_URL LIBRARY_GRPC_ADDR POLL_INTERVAL
 
 .PHONY: db run test build proto
 

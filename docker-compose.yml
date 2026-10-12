@@ -6,9 +6,18 @@ services:
       POSTGRES_PASSWORD: seat
       POSTGRES_DB: seatfinder
     ports:
-      - "5432:5432"
+      - "5433:5432"   # host 5433: avoids clashing with a locally installed postgres
     volumes:
       - seatfinder-pgdata:/var/lib/postgresql/data
 
+  # Review service store (ADR-006 amendment: reviews are document-shaped)
+  mongo:
+    image: mongo:8
+    ports:
+      - "27018:27017"   # host 27018: avoids clashing with a locally installed mongod
+    volumes:
+      - seatfinder-mongodata:/data/db
+
 volumes:
   seatfinder-pgdata:
+  seatfinder-mongodata:

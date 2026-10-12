@@ -26,7 +26,7 @@ func getenv(key, def string) string {
 }
 
 func main() {
-	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5432/seatfinder")
+	databaseURL := getenv("DATABASE_URL", "postgres://seat:seat@localhost:5433/seatfinder")
 	port := getenv("PORT", "8083")
 	pollInterval := 30 * time.Second
 	if v := os.Getenv("POLL_INTERVAL"); v != "" {
