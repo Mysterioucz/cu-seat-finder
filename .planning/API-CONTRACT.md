@@ -24,6 +24,7 @@ Source of truth for the HTTP interface. Derived from project-proposal.md + micro
 - `POST /api/auth/logout` → 204 (stateless; client drops token).
 - `GET /api/users/me`, `PATCH /api/users/me` `{name?, language?}` (auth).
 - `GET /api/users/{id}` → `{id, name, role, student_id, active_penalty: bool}` (internal viewProfile). `active_penalty` = the user has an unexpired row in `users.penalties`.
+- `GET /api/users/penalized` (admin) → `[{id, name, student_id, expires_at}]` users with an active penalty. `POST /api/users/{id}/unban` (admin) → 204; expires their active penalties now (404 `not_found` if none).
 - Consumes `reservation.no_show` (RabbitMQ, see Events) → inserts a 7-day penalty keyed by `reservation_id`, so redelivery is a no-op.
 - User: `{id, student_id?, email?, name, role, language: "th"|"en", created_at}`.
 

@@ -133,6 +133,10 @@ const dict = {
     th: "บัญชีของคุณถูกระงับสิทธิ์การจองชั่วคราวจากการไม่มาใช้ห้องตามนัด",
     en: "Your account is temporarily blocked from booking due to a past no-show.",
   },
+  "reserve.customerOnly": {
+    th: "เฉพาะบัญชีนักศึกษาเท่านั้นที่จองห้องได้ แอดมินไม่สามารถจองได้",
+    en: "Only student accounts can book rooms. Admins can't make bookings.",
+  },
   "reserve.notFound": { th: "ไม่พบห้องนี้", en: "Room not found." },
 
   "reservations.title": { th: "การจองของฉัน", en: "My reservations" },
@@ -158,6 +162,10 @@ const dict = {
   "admin.noFlagged": { th: "ไม่มีรีวิวที่ถูกรายงาน", en: "No flagged reviews." },
   "admin.hide": { th: "ซ่อน", en: "Hide" },
   "admin.unhide": { th: "เลิกซ่อน", en: "Unhide" },
+  "admin.penalized": { th: "ผู้ใช้ที่ถูกลงโทษ", en: "Penalized users" },
+  "admin.noPenalized": { th: "ไม่มีผู้ใช้ที่ถูกลงโทษ", en: "No penalized users." },
+  "admin.penaltyUntil": { th: "ถึง {date}", en: "until {date}" },
+  "admin.unban": { th: "ปลดโทษ", en: "Unban" },
   "admin.hidden": { th: "ซ่อนอยู่", en: "Hidden" },
 
   "adminLib.title": { th: "ห้องสมุดและห้องประชุม", en: "Libraries & rooms" },

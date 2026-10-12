@@ -55,8 +55,10 @@ export default function ReserveForm({ roomId }: { roomId: string }) {
         setConflict(true);
       } else if (err instanceof ApiError && err.code === "quota_exceeded") {
         setError(t("reserve.quota"));
-      } else if (err instanceof ApiError && err.status === 403) {
+      } else if (err instanceof ApiError && err.code === "penalty") {
         setError(t("reserve.penalty"));
+      } else if (err instanceof ApiError && err.code === "forbidden") {
+        setError(t("reserve.customerOnly"));
       } else {
         setError(err instanceof ApiError ? err.message : t("error.network"));
       }

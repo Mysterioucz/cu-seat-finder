@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/cu-seat-finder/backend/internal/authn"
 	"github.com/cu-seat-finder/backend/internal/httpx"
@@ -21,6 +22,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.Handle("GET /api/users/me", authn.Require(s.jwtSecret)(http.HandlerFunc(s.getMe)))
 	mux.Handle("PATCH /api/users/me", authn.Require(s.jwtSecret)(http.HandlerFunc(s.patchMe)))
 	mux.HandleFunc("GET /api/users/{id}", s.getProfile)
+	mux.Handle("GET /api/users/penalized", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.listPenalized)))
+	mux.Handle("POST /api/users/{id}/unban", authn.RequireRole(s.jwtSecret, "admin")(http.HandlerFunc(s.unban)))
 }
 
 type loginReq struct {
@@ -155,4 +158,50 @@ func (s *server) getProfile(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, Profile{
 		ID: u.ID, Name: u.Name, Role: u.Role, StudentID: u.StudentID, ActivePenalty: u.ActivePenalty,
 	})
+}
+
+type penalizedUser struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	StudentID string    `json:"student_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+func (s *server) listPenalized(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `
+		SELECT u.id, u.name, COALESCE(u.student_id, ''), max(p.expires_at)
+		FROM users.penalties p JOIN users.users u ON u.id = p.user_id
+		WHERE p.expires_at > now() GROUP BY u.id ORDER BY 4 DESC`)
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load penalized users")
+		return
+	}
+	defer rows.Close()
+	items := []penalizedUser{}
+	for rows.Next() {
+		var p penalizedUser
+		if err := rows.Scan(&p.ID, &p.Name, &p.StudentID, &p.ExpiresAt); err != nil {
+			httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not read penalized users")
+			return
+		}
+		items = append(items, p)
+	}
+	httpx.WriteJSON(w, http.StatusOK, items)
+}
+
+// unban expires the user's active penalties now. Rows are kept (not deleted)
+// so a redelivered no_show event still hits ON CONFLICT DO NOTHING and cannot
+// re-penalise the user.
+func (s *server) unban(w http.ResponseWriter, r *http.Request) {
+	tag, err := s.db.Exec(r.Context(),
+		"UPDATE users.penalties SET expires_at = now() WHERE user_id = $1 AND expires_at > now()", r.PathValue("id"))
+	if err != nil {
+		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not unban user")
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		httpx.WriteError(w, http.StatusNotFound, "not_found", "user has no active penalty")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

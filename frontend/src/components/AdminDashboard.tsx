@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/LangContext";
-import type { Reservation, Review } from "@/lib/types";
+import type { PenalizedUser, Reservation, Review } from "@/lib/types";
 import Button from "./Button";
 import AdminLibraries from "./AdminLibraries";
 import ErrorState from "./ErrorState";
@@ -29,6 +29,31 @@ export default function AdminDashboard() {
   const [flaggedError, setFlaggedError] = useState(false);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
 
+  const [penalized, setPenalized] = useState<PenalizedUser[] | null>(null);
+  const [penalizedError, setPenalizedError] = useState(false);
+  const [unbanBusy, setUnbanBusy] = useState<string | null>(null);
+
+  function loadPenalized() {
+    api<PenalizedUser[]>("/api/users/penalized")
+      .then((data) => {
+        setPenalized(data);
+        setPenalizedError(false);
+      })
+      .catch(() => setPenalizedError(true));
+  }
+
+  async function unban(id: string) {
+    setUnbanBusy(id);
+    try {
+      await api(`/api/users/${id}/unban`, { method: "POST" });
+      loadPenalized();
+    } catch {
+      setPenalizedError(true);
+    } finally {
+      setUnbanBusy(null);
+    }
+  }
+
   function loadPending() {
     api<Reservation[]>("/api/reservations?status=pending")
       .then((data) => {
@@ -50,6 +75,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadPending();
     loadFlagged();
+    loadPenalized();
   }, []);
 
   async function act(id: string, action: "accept" | "reject") {
@@ -115,6 +141,36 @@ export default function AdminDashboard() {
               ))}
             </div>
           )
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">
+          {t("admin.penalized")}
+          {penalized && penalized.length > 0 ? ` (${penalized.length})` : ""}
+        </h2>
+        {penalizedError && <ErrorState onRetry={loadPenalized} />}
+        {penalized?.length === 0 && <p className="text-sm text-muted-foreground">{t("admin.noPenalized")}</p>}
+        {penalized && penalized.length > 0 && (
+          <div className="divide-y divide-border rounded-xl border border-border bg-surface">
+            {penalized.map((u) => (
+              <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="text-sm">
+                  <p className="font-medium">
+                    {u.name} · {u.student_id}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t("admin.penaltyUntil", {
+                      date: new Date(u.expires_at).toLocaleString(lang === "th" ? "th-TH" : "en-US"),
+                    })}
+                  </p>
+                </div>
+                <Button variant="secondary" loading={unbanBusy === u.id} onClick={() => unban(u.id)}>
+                  {t("admin.unban")}
+                </Button>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 

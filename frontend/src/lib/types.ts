@@ -90,3 +90,5 @@ export type Review = {
 export type ReviewsResponse = { average: number; count: number; items: Review[] };
 
 export type ApiErrorBody = { error: string; message: string };
+
+export type PenalizedUser = { id: string; name: string; student_id: string; expires_at: string };
