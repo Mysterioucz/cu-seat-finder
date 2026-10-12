@@ -23,16 +23,12 @@ func migrate(ctx context.Context, db *pgxpool.Pool) error {
 			language text NOT NULL DEFAULT 'th',
 			created_at timestamptz NOT NULL DEFAULT now()
 		);
-		-- active_penalty used to be a never-written flag; it is now derived
-		-- from users.penalties below.
-		ALTER TABLE users.users DROP COLUMN IF EXISTS active_penalty;
 
 		-- One row per penalised booking, written by the no-show consumer
 		-- (ADR-007). reservation_id as the key makes redelivered events no-ops.
 		CREATE TABLE IF NOT EXISTS users.penalties (
 			reservation_id text PRIMARY KEY,
 			user_id text NOT NULL REFERENCES users.users(id) ON DELETE CASCADE,
-			reason text NOT NULL,
 			expires_at timestamptz NOT NULL,
 			created_at timestamptz NOT NULL DEFAULT now()
 		);

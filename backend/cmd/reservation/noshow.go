@@ -8,12 +8,14 @@ import (
 	"github.com/cu-seat-finder/backend/internal/broker"
 )
 
+const noShowInterval = time.Minute
+
 // noShowLoop sweeps for accepted bookings whose check-in deadline passed with
 // no check-in, and tells the rest of the system via RabbitMQ (ADR-007). The
 // User service consumes the event and applies the penalty; Reservation never
 // writes to another service's data.
 func (s *server) noShowLoop(ctx context.Context) {
-	ticker := time.NewTicker(s.noShowInterval)
+	ticker := time.NewTicker(noShowInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -35,9 +37,9 @@ func (s *server) noShowLoop(ctx context.Context) {
 //  2. publish each one and wait for the broker's confirm,
 //  3. only then mark the published rows 'no_show' and commit.
 //
-// A crash between 2 and 3 leaves the rows 'accepted', so the next sweep
-// publishes them again: duplicates are possible, losses are not, and the
-// consumer dedupes on reservation_id.
+// A failed publish or a crash before 3 rolls everything back, leaving the rows
+// 'accepted', so the next sweep publishes them again: duplicates are
+// possible, losses are not, and the consumer dedupes on reservation_id.
 func (s *server) sweepNoShows(ctx context.Context) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -55,6 +57,7 @@ func (s *server) sweepNoShows(ctx context.Context) error {
 		return err
 	}
 	var due []broker.NoShowEvent
+	var ids []string
 	for rows.Next() {
 		var ev broker.NoShowEvent
 		if err := rows.Scan(&ev.ReservationID, &ev.UserID, &ev.RoomID, &ev.StartTime, &ev.CheckinDeadline); err != nil {
@@ -62,33 +65,32 @@ func (s *server) sweepNoShows(ctx context.Context) error {
 			return err
 		}
 		due = append(due, ev)
+		ids = append(ids, ev.ReservationID)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	var published []string
-	var publishErr error
-	for _, ev := range due {
-		pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		publishErr = s.events.Publish(pctx, broker.RoutingNoShow, "no_show:"+ev.ReservationID, ev)
-		cancel()
-		if publishErr != nil {
-			break // broker is down; the rest stay 'accepted' and are retried next tick
-		}
-		published = append(published, ev.ReservationID)
+	if len(due) == 0 {
+		return nil
 	}
 
-	if len(published) > 0 {
-		if _, err := tx.Exec(ctx, `
-			UPDATE reservation.reservations SET status = 'no_show' WHERE id = ANY($1)`, published); err != nil {
+	for _, ev := range due {
+		pctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		err := s.events.Publish(pctx, broker.RoutingNoShow, "no_show:"+ev.ReservationID, ev)
+		cancel()
+		if err != nil {
 			return err
 		}
-		if err := tx.Commit(ctx); err != nil {
-			return err
-		}
-		log.Printf("reservation: published %d no-show event(s)", len(published))
 	}
-	return publishErr
+	if _, err := tx.Exec(ctx, `
+		UPDATE reservation.reservations SET status = 'no_show' WHERE id = ANY($1)`, ids); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	log.Printf("reservation: published %d no-show event(s)", len(due))
+	return nil
 }

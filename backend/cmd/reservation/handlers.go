@@ -290,28 +290,14 @@ func (s *server) checkIn(w http.ResponseWriter, r *http.Request) {
 		AND now() BETWEEN start_time - interval '15 minutes' AND checkin_deadline
 		RETURNING `+reservationCols, req.Reference)
 	res, err := scanReservation(row)
-	if err == nil {
-		httpx.WriteJSON(w, http.StatusOK, res)
+	if errors.Is(err, pgx.ErrNoRows) {
+		httpx.WriteError(w, http.StatusConflict, "not_checkable",
+			"no accepted, not-yet-checked-in reservation with that reference is inside its check-in window")
 		return
 	}
-	if !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not check in")
 		return
 	}
-
-	// Nothing updated: look the booking up to say why.
-	res, err = scanReservation(s.db.QueryRow(r.Context(),
-		"SELECT "+reservationCols+" FROM reservation.reservations WHERE reference=$1", req.Reference))
-	switch {
-	case errors.Is(err, pgx.ErrNoRows):
-		httpx.WriteError(w, http.StatusNotFound, "not_found", "no reservation with that reference")
-	case err != nil:
-		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load reservation")
-	case res.CheckedInAt != nil:
-		httpx.WriteError(w, http.StatusConflict, "already_checked_in", "reservation is already checked in")
-	case res.Status != "accepted":
-		httpx.WriteError(w, http.StatusConflict, "not_checkable", "reservation is "+res.Status)
-	default:
-		httpx.WriteError(w, http.StatusConflict, "checkin_window", "outside the check-in window")
-	}
+	httpx.WriteJSON(w, http.StatusOK, res)
 }

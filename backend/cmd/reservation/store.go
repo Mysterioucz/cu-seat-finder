@@ -40,16 +40,7 @@ func migrate(ctx context.Context, db *pgxpool.Pool) error {
 			during tstzrange GENERATED ALWAYS AS (tstzrange(start_time, end_time, '[)')) STORED,
 			EXCLUDE USING gist (room_id WITH =, during WITH &&) WHERE (status IN ('pending','accepted'))
 		);
-
-		-- Upgrades for databases created before QR check-in / no-show (ADR-007).
-		ALTER TABLE reservation.reservations ADD COLUMN IF NOT EXISTS checked_in_at timestamptz;
-		ALTER TABLE reservation.reservations DROP CONSTRAINT IF EXISTS reservations_status_check;
-		ALTER TABLE reservation.reservations ADD CONSTRAINT reservations_status_check
-			CHECK (status IN ('pending','accepted','rejected','cancelled','no_show'));
 		CREATE UNIQUE INDEX IF NOT EXISTS reservations_reference_key ON reservation.reservations (reference);
-		-- The no-show sweeper's scan: accepted, not checked in, deadline passed.
-		CREATE INDEX IF NOT EXISTS reservations_noshow_idx ON reservation.reservations (checkin_deadline)
-			WHERE status = 'accepted' AND checked_in_at IS NULL;
 	`)
 	return err
 }

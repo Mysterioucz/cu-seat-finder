@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -24,24 +25,20 @@ const penaltyDuration = 7 * 24 * time.Hour
 func (s *server) handleNoShow(ctx context.Context, body []byte) error {
 	var ev broker.NoShowEvent
 	if err := json.Unmarshal(body, &ev); err != nil || ev.ReservationID == "" || ev.UserID == "" {
-		return broker.Permanent(errors.New("malformed no_show event"))
+		return fmt.Errorf("%w: malformed no_show event", broker.ErrPermanent)
 	}
-	tag, err := s.db.Exec(ctx, `
-		INSERT INTO users.penalties (reservation_id, user_id, reason, expires_at)
-		VALUES ($1, $2, 'no_show', $3)
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO users.penalties (reservation_id, user_id, expires_at)
+		VALUES ($1, $2, $3)
 		ON CONFLICT (reservation_id) DO NOTHING`,
 		ev.ReservationID, ev.UserID, ev.CheckinDeadline.Add(penaltyDuration))
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23503" { // foreign_key_violation: unknown user
-		return broker.Permanent(err)
+		return fmt.Errorf("%w: %v", broker.ErrPermanent, err)
 	}
 	if err != nil {
 		return err // transient (DB down etc.): requeued and retried
 	}
-	if tag.RowsAffected() == 0 {
-		log.Printf("user: no_show for reservation %s already applied, skipping", ev.ReservationID)
-		return nil
-	}
-	log.Printf("user: penalised %s for no-show on reservation %s", ev.UserID, ev.ReservationID)
+	log.Printf("user: no-show penalty for %s on reservation %s recorded (repeats are no-ops)", ev.UserID, ev.ReservationID)
 	return nil
 }

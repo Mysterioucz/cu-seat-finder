@@ -33,10 +33,6 @@ func main() {
 	port := getenv("PORT", "8084")
 	userURL := getenv("USER_URL", "http://localhost:8081")
 	rabbitURL := getenv("RABBITMQ_URL", "amqp://seat:seat@localhost:5672/")
-	noShowInterval, err := time.ParseDuration(getenv("NOSHOW_INTERVAL", "1m"))
-	if err != nil || noShowInterval <= 0 {
-		log.Fatalf("NOSHOW_INTERVAL must be a positive duration like 1m or 30s")
-	}
 
 	pool, err := dbx.Connect(databaseURL)
 	if err != nil {
@@ -53,8 +49,7 @@ func main() {
 	events := broker.NewPublisher(rabbitURL)
 	defer events.Close()
 
-	srv := &server{db: pool, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL,
-		events: events, noShowInterval: noShowInterval}
+	srv := &server{db: pool, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL, events: events}
 	go srv.noShowLoop(context.Background())
 
 	mux := http.NewServeMux()
@@ -69,7 +64,5 @@ type server struct {
 	jwtSecret string
 	library   pb.LibraryServiceClient
 	userURL   string
-
-	events         *broker.Publisher
-	noShowInterval time.Duration
+	events    *broker.Publisher
 }

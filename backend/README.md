@@ -51,7 +51,11 @@ curl -s localhost:8084/api/reservations/checkin -H "authorization: Bearer $TOKEN
   -H 'content-type: application/json' -d '{"reference":"CU-7F3K9Q"}'
 ```
 
-Set `NOSHOW_INTERVAL=10s` to watch the sweeper fire quickly in a demo.
+The sweeper runs once a minute.
+
+Schemas are created with `CREATE TABLE IF NOT EXISTS` and never altered, so
+after pulling a schema change (such as this one), reset dev data with
+`docker compose down -v && make db`; services re-seed on startup.
 
 ## Library gRPC demo (grpcurl)
 

@@ -23,13 +23,12 @@ import (
 const (
 	// Exchange carries every reservation lifecycle event; the routing key is the event name.
 	Exchange = "reservation.events"
-	// DeadLetterExchange receives messages a consumer rejected as unprocessable.
-	DeadLetterExchange = "reservation.events.dlx"
 
 	RoutingNoShow = "reservation.no_show"
 
 	// QueueUserNoShow is User service's inbox for no-show events (penalties).
 	QueueUserNoShow = "user.reservation-no-show"
+	// queueDeadLetter holds messages a consumer rejected as unprocessable.
 	queueDeadLetter = "reservation.events.dlq"
 )
 
@@ -48,16 +47,11 @@ func declareTopology(ch *amqp.Channel) error {
 	if err := ch.ExchangeDeclare(Exchange, "topic", true, false, false, false, nil); err != nil {
 		return err
 	}
-	if err := ch.ExchangeDeclare(DeadLetterExchange, "fanout", true, false, false, false, nil); err != nil {
-		return err
-	}
 	if _, err := ch.QueueDeclare(queueDeadLetter, true, false, false, false, nil); err != nil {
 		return err
 	}
-	if err := ch.QueueBind(queueDeadLetter, "", DeadLetterExchange, false, nil); err != nil {
-		return err
-	}
-	args := amqp.Table{"x-dead-letter-exchange": DeadLetterExchange}
+	// Dead-letter through the default exchange, which routes by queue name.
+	args := amqp.Table{"x-dead-letter-exchange": "", "x-dead-letter-routing-key": queueDeadLetter}
 	if _, err := ch.QueueDeclare(QueueUserNoShow, true, false, false, false, args); err != nil {
 		return err
 	}
@@ -148,21 +142,10 @@ func (p *Publisher) closeLocked() {
 	p.conn, p.ch = nil, nil
 }
 
-// Permanent marks a handler error as one retrying will never fix (malformed
-// body, unknown user): the message goes to the dead-letter queue instead of
-// being redelivered forever.
-func Permanent(err error) error { return permanentError{err} }
-
-type permanentError struct{ err error }
-
-func (e permanentError) Error() string { return e.err.Error() }
-func (e permanentError) Unwrap() error { return e.err }
-
-// requeue decides what happens to a message whose handler failed.
-func requeue(err error) bool {
-	var p permanentError
-	return !errors.As(err, &p)
-}
+// ErrPermanent marks a handler error as one retrying will never fix (malformed
+// body, unknown user): wrap it with fmt.Errorf("%w: ...", ErrPermanent) and the
+// message goes to the dead-letter queue instead of being redelivered forever.
+var ErrPermanent = errors.New("permanent")
 
 // Handler processes one message body. Returning nil acks it.
 type Handler func(ctx context.Context, body []byte) error
@@ -198,7 +181,8 @@ func consumeOnce(ctx context.Context, url, queue string, handle Handler) error {
 	if err := declareTopology(ch); err != nil {
 		return err
 	}
-	if err := ch.Qos(10, 0, false); err != nil {
+	// Handlers run one at a time, so hold at most one unacked message.
+	if err := ch.Qos(1, 0, false); err != nil {
 		return err
 	}
 	deliveries, err := ch.ConsumeWithContext(ctx, queue, "", false, false, false, false, nil)
@@ -211,16 +195,16 @@ func consumeOnce(ctx context.Context, url, queue string, handle Handler) error {
 		switch {
 		case err == nil:
 			_ = d.Ack(false)
-		case requeue(err):
+		case errors.Is(err, ErrPermanent):
+			log.Printf("broker: %s message %s dead-lettered: %v", queue, d.MessageId, err)
+			_ = d.Nack(false, false)
+		default:
 			log.Printf("broker: %s message %s failed, will retry: %v", queue, d.MessageId, err)
 			select {
 			case <-ctx.Done():
 			case <-time.After(retryDelay):
 			}
 			_ = d.Nack(false, true)
-		default:
-			log.Printf("broker: %s message %s dead-lettered: %v", queue, d.MessageId, err)
-			_ = d.Nack(false, false)
 		}
 	}
 	if ctx.Err() != nil {
