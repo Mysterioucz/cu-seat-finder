@@ -42,3 +42,8 @@ func WithCORS(h http.Handler) http.Handler {
 		h.ServeHTTP(w, r)
 	})
 }
+
+// Healthz is the liveness probe (GET /healthz) used by Docker Compose
+// healthchecks (ADR-008). It only says "the process is up"; it deliberately
+// does not ping the DB, so a database blip doesn't restart every service.
+func Healthz(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }

@@ -45,6 +45,7 @@ func main() {
 	srv := &server{reviews: reviews, jwtSecret: jwtSecret, library: libraryclient.New(), userURL: userURL}
 	mux := http.NewServeMux()
 	srv.routes(mux)
+	mux.HandleFunc("GET /healthz", httpx.Healthz)
 
 	log.Printf("review service listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, httpx.WithCORS(mux)))

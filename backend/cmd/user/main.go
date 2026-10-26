@@ -46,6 +46,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	srv.routes(mux)
+	mux.HandleFunc("GET /healthz", httpx.Healthz)
 
 	log.Printf("user service listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, httpx.WithCORS(mux)))

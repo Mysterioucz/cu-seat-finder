@@ -52,6 +52,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	srv.routes(mux)
+	mux.HandleFunc("GET /healthz", httpx.Healthz)
 
 	log.Printf("occupancy service listening on :%s (poll every %s)", port, pollInterval)
 	log.Fatal(http.ListenAndServe(":"+port, httpx.WithCORS(mux)))

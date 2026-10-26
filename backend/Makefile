@@ -10,10 +10,21 @@ RABBITMQ_URL ?= amqp://seat:seat@localhost:5672/
 
 export DATABASE_URL MONGO_URL JWT_SECRET USER_URL LIBRARY_GRPC_ADDR POLL_INTERVAL RABBITMQ_URL
 
-.PHONY: db run test build proto
+.PHONY: db up down backup run test build proto
 
 db:
 	cd .. && docker compose up -d
+
+# Infra + all 5 services in containers; they find each other by Compose DNS name (ADR-008).
+up:
+	cd .. && docker compose --profile app up -d --build
+
+down:
+	cd .. && docker compose --profile app down
+
+# Dumps Postgres + MongoDB into ../backups/<timestamp>/ (daily-backup NFR).
+backup:
+	./scripts/backup.sh
 
 build:
 	go build ./...

@@ -21,6 +21,31 @@ make proto  # regenerate gen/ from ../proto (needs buf + protoc-gen-go + protoc-
 
 Copy `.env.example` to `.env` to override defaults (DB URL, Mongo URL, JWT secret, ports).
 
+## Run in Docker (ADR-008)
+
+```
+make up       # infra + all 5 services as containers (compose profile "app"), same ports as `make run`
+make down     # stop them
+make backup   # pg_dump + mongodump into ../backups/<timestamp>/ (cron it daily)
+```
+
+**Service discovery:** inside Compose, services reach each other by service name
+(`LIBRARY_GRPC_ADDR=library:9082`, `USER_URL=http://user:8081`, `postgres:5432`, ...)
+through Docker DNS. The addresses are environment variables, with no registry. The frontend
+(`pnpm dev`) is unchanged and uses the published `localhost` ports.
+
+**Health:** `GET /healthz` on each REST service; Library serves `grpc.health.v1`
+(`grpcurl -plaintext localhost:9082 grpc.health.v1.Health/Check`). `docker compose ps`
+shows `healthy`, and a crashed service restarts automatically (`restart: unless-stopped`).
+
+**Response time (< 1 s NFR):** measure with ApacheBench:
+
+```
+echo '{"room_id":"room-central-1","start_time":"2030-01-01T10:00:00Z","duration_minutes":60}' > /tmp/body.json
+ab -n 500 -c 10 -p /tmp/body.json -T application/json -H "authorization: Bearer $TOKEN" \
+  http://localhost:8084/api/reservations     # read the 95% line; most replies are 409/422 by design
+```
+
 ## Ports
 
 | Service     | Port | Prefix                        |

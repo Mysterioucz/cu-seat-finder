@@ -1,3 +1,31 @@
+# `make db`  -> infra only (postgres, mongo, rabbitmq); run services with `make run`.
+# `make up`  -> infra + all 5 services in containers (profile "app", ADR-008).
+#
+# Service discovery (ADR-008): containers find each other by Compose service
+# name through Docker's built-in DNS (e.g. LIBRARY_GRPC_ADDR=library:9082).
+# No registry: addresses are plain env vars, so the same binaries run under
+# Kubernetes Service DNS without code changes.
+
+# Shared settings for the Go services. Every service gets the same env; each
+# reads only what it needs.
+x-app: &app
+  build: ./backend
+  image: seatfinder-backend
+  profiles: ["app"]
+  restart: unless-stopped
+  environment:
+    DATABASE_URL: postgres://seat:seat@postgres:5432/seatfinder
+    MONGO_URL: mongodb://mongo:27017
+    RABBITMQ_URL: amqp://seat:seat@rabbitmq:5672/
+    USER_URL: http://user:8081
+    LIBRARY_GRPC_ADDR: library:9082
+    JWT_SECRET: ${JWT_SECRET:-dev-secret}
+    POLL_INTERVAL: ${POLL_INTERVAL:-30}
+  depends_on:
+    postgres: { condition: service_healthy }
+    mongo: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
 services:
   postgres:
     image: postgres:17
@@ -9,6 +37,10 @@ services:
       - "5432:5432"
     volumes:
       - seatfinder-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "seat", "-d", "seatfinder"]
+      interval: 5s
+      retries: 10
 
   # Review service store (ADR-006 amendment: reviews are document-shaped)
   mongo:
@@ -17,6 +49,10 @@ services:
       - "27018:27017"   # host 27018: avoids clashing with a locally installed mongod
     volumes:
       - seatfinder-mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      retries: 10
 
   # Message broker for async events between services (ADR-007).
   # Management UI: http://localhost:15672 (seat / seat)
@@ -33,6 +69,43 @@ services:
       - "15672:15672"
     volumes:
       - seatfinder-rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      retries: 10
+
+  # --- Go services (profile "app"). `restart` brings a crashed service back;
+  # healthchecks report liveness in `docker compose ps` (99% uptime NFR, ADR-008).
+  user:
+    <<: *app
+    command: ["/app/user"]
+    ports: ["8081:8081"]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8081/healthz"], interval: 10s }
+
+  library:
+    <<: *app
+    command: ["/app/library"]
+    ports: ["9082:9082"]
+    # gRPC: a TCP check is enough for liveness; grpc.health.v1 is also served for grpcurl/k8s.
+    healthcheck: { test: ["CMD", "nc", "-z", "localhost", "9082"], interval: 10s }
+
+  occupancy:
+    <<: *app
+    command: ["/app/occupancy"]
+    ports: ["8083:8083"]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8083/healthz"], interval: 10s }
+
+  reservation:
+    <<: *app
+    command: ["/app/reservation"]
+    ports: ["8084:8084"]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8084/healthz"], interval: 10s }
+
+  review:
+    <<: *app
+    command: ["/app/review"]
+    ports: ["8085:8085"]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8085/healthz"], interval: 10s }
 
 volumes:
   seatfinder-pgdata:
