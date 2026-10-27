@@ -1,11 +1,12 @@
-**CU SeatFinder**  
-**Project Description & Architecture Decision Records**
+# **CU SeatFinder**
+
+# **Project Description & Architecture Decision Records**
 
 ## **Group Members**
 
-•   	Chatrin Yoonchalard 6631304721  
-•   	Chayaphon Kultanon 6631306021  
-•   	Nantaporn Phuaphanbun 6631330021
+* Chatrin Yoonchalard 6631304721
+* Chayaphon Kultanon 6631306021
+* Nantaporn Phuaphanbun 6631330021
 
 ## **Problem Description**
 
@@ -13,166 +14,177 @@ University students lack real-time visibility into study space availability acro
 
 ## **Target Customers**
 
-•   	Admin: Manages library data, monitors occupancy trends, and moderates reviews.  
-•   	Customer: University Student and University Staff views occupancy, reserves meeting rooms, filters libraries, and writes reviews.
+* Admin: Manages library data, monitors occupancy trends, and moderates reviews.
+* Customer: University Student and University Staff views occupancy, reserves meeting rooms, filters libraries, and writes reviews.
 
 ## **Scenario Overview (Use Cases)**
 
-•   	View Seat Density see how crowded each library currently is.  
-•   	Reserve Meeting Room book a meeting room in advance.  
-•   	Filter Empty Libraries filter to find which libraries currently have free space.  
-•   	Review Library: leaves a review of a library.
-
- 
+* Sign In / Sign Out (authentication): customers sign in with their university account; admins sign in with email and password.
+* View Seat Density see how crowded each library currently is.
+* Reserve Meeting Room book a meeting room in advance.
+* Filter Empty Libraries filter to find which libraries currently have free space.
+* Review Library: leaves a review of a library.
 
 ## **Use Case Details**
+
+### **UC-00: Sign In / Sign Out (Authentication)**
+
+| Use Case Name: Sign In / Sign Out | ID: UC-00 |
+| :---- | :---- |
+| Importance Level: High | Use Case Type: Security / Authentication |
+| Primary Actor:<br>Customer (Student / Staff), Admin |  |
+| Stakeholders and Interests:<br>Customer: Wants to sign in with the university account they already have, without creating another password.<br>Admin: Wants only verified university members to book rooms and write reviews, and wants admin functions behind a separate login. |  |
+| Brief Description:<br>A customer signs in through the university identity provider (CU SSO, OIDC); an admin signs in with email and password. The system issues a JWT session that every later request carries through the API Gateway. |  |
+| Trigger:<br>User opens the app without a valid session, or taps "Sign in". |  |
+| Type:<br>External |  |
+| Relationships:<br>Required by UC-02 Reserve Meeting Room and UC-04 Review Library, which need a signed-in user. |  |
+| Precondition:<br>Customer holds a university account; admin holds an admin account created by the team. |  |
+| Postcondition:<br>A JWT session carrying the user's role (customer or admin) is issued; after sign-out the session is cleared. |  |
+| Normal Flow of Events:<br>1. User opens the sign-in page.<br>2. Customer chooses "Sign in with CU account"; the User Service verifies the identity with the university IdP (a mock OIDC provider during development, ADR-004).<br>3. On first sign-in, the system creates the customer's profile.<br>4. The User Service issues a JWT containing the user ID and role.<br>5. The app stores the session; every later request sends it to the API Gateway, which verifies it before routing (ADR-008).<br>6. User taps "Sign out" and the session is cleared. |  |
+| Subflows:<br>Admin Sign-in: Admin enters email and password; the User Service checks the bcrypt password hash and issues a JWT with role admin. |  |
+| Alternate/Exceptional Flow:<br>Invalid Credentials: The system shows an error and the user stays on the sign-in page.<br>Expired or Invalid Token: The API Gateway rejects the request with 401 and the app returns the user to the sign-in page.<br>Penalized Account: Sign-in succeeds, but booking is blocked while a no-show penalty is active (UC-02). |  |
 
 ### **UC-01: View Seat Density**
 
 | Use Case Name: View Seat Density | ID: UC-01 |
 | :---- | :---- |
 | Importance Level: High | Use Case Type: Informational / Real-time |
-| Primary Actor: Customer (Student / Staff) |  |
-| Stakeholders and Interests: Customer: Wants to see live capacity percentages across libraries at a glance to choose a low-density study spot before arriving. Admin: Wants automated, accurate tracking of library traffic without manual counting. |  |
-| Brief Description: The user views live occupancy percentages displayed on the library list. |  |
-| Trigger: Customer opens the app home screen or navigates to the "Libraries" tab. |  |
-| Type: External |  |
-| Relationships: Depends on Library Turnstile Check-in/Check-out Database Service. |  |
-| Precondition: Customer is on the main app screen; Library Turnstile Check-in/Check-out system is operational. |  |
-| Postcondition: Customer gains clear visibility into current library capacity percentages. |  |
-| Normal Flow of Events: 1\. System queries the library turnstile check-in/check-out database for current tap-in and tap-out logs. 2\. System calculates live occupancy percentages for all available libraries. 3\. System displays the main library list showing each library's name alongside its live occupancy percentage badge (e.g., Chula Central Library   45% Occupied). 4\. Customer views the list and taps on a specific library. |  |
-| Subflows: None. |  |
-| Alternate/Exceptional Flow: Data Delay / Database Disconnection: If real-time check-in updates are delayed or connection drops, the system displays the last calculated percentages with a "Last updated \[X\] mins ago" warning indicator on the list. |  |
-
- 
+| Primary Actor:<br>Customer (Student / Staff) |  |
+| Stakeholders and Interests:<br>Customer: Wants to see live capacity percentages across libraries at a glance to choose a low-density study spot before arriving.<br>Admin: Wants automated, accurate tracking of library traffic without manual counting. |  |
+| Brief Description:<br>The user views live occupancy percentages displayed on the library list. |  |
+| Trigger:<br>Customer opens the app home screen or navigates to the "Libraries" tab. |  |
+| Type:<br>External |  |
+| Relationships:<br>Depends on Library Turnstile Check-in/Check-out Database Service. |  |
+| Precondition:<br>Customer is on the main app screen; Library Turnstile Check-in/Check-out system is operational. |  |
+| Postcondition:<br>Customer gains clear visibility into current library capacity percentages. |  |
+| Normal Flow of Events:<br>1. System queries the library turnstile check-in/check-out database for current tap-in and tap-out logs.<br>2. System calculates live occupancy percentages for all available libraries.<br>3. System displays the main library list showing each library's name alongside its live occupancy percentage badge (e.g., Chula Central Library   45% Occupied).<br>4. Customer views the list and taps on a specific library. |  |
+| Subflows:<br>None. |  |
+| Alternate/Exceptional Flow:<br>Data Delay / Database Disconnection: If real-time check-in updates are delayed or connection drops, the system displays the last calculated percentages with a "Last updated [X] mins ago" warning indicator on the list. |  |
 
 ### **UC-02: Reserve Meeting Room**
 
 | Use Case Name: Reserve Meeting Room | ID: UC-02 |
 | :---- | :---- |
 | Importance Level: High | Use Case Type: Business / Transactional |
-| Primary Actor: Customer (Student / Staff) |  |
-| Stakeholders and Interests: Customer: Wants to secure a specific meeting room for a planned session. Admin: Wants fair usage, reduced no-shows, and optimal resource allocation. |  |
-| Brief Description: The customer selects an available meeting room, sets a time duration, and confirms a meeting room reservation. |  |
-| Trigger: Customer selects an available meeting room and taps "Book Meeting Room". |  |
-| Type: External |  |
-| Relationships: Depends on Library Database Service. |  |
-| Precondition: Customer is authenticated/logged in; target meeting room is in "Available" status. |  |
-| Postcondition: Meeting room status changes to "Reserved"; booking confirmation ticket/QR code is issued with a check-in countdown timer. |  |
-| Normal Flow of Events: 1\. Customer selects an available meeting room on the map. 2\. Customer inputs reservation details (start time, duration). 3\. System verifies booking eligibility against quota and daily time limits. 4\. System prompts customer to confirm booking details. 5\. Customer confirms reservation. 6\. Admin accepts the reservation. 7\. System locks meeting room status to "Reserved" and generates a booking reference/QR code. |  |
-| Subflows: Quota Check: System verifies if the customer has existing active bookings or active penalties. |  |
-| Alternate/Exceptional Flow: Booking Conflict: If another user books the meeting room simultaneously, the system prompts the customer to select a different meeting room. Limit Reached: If the customer exceeds daily booking hours or active booking quotas, the system blocks the transaction and displays a limit error message. |  |
-
- 
+| Primary Actor:<br>Customer (Student / Staff) |  |
+| Stakeholders and Interests:<br>Customer: Wants to secure a specific meeting room for a planned session.<br>Admin: Wants fair usage, reduced no-shows, and optimal resource allocation. |  |
+| Brief Description:<br>The customer selects an available meeting room, sets a time duration, and confirms a meeting room reservation. |  |
+| Trigger:<br>Customer selects an available meeting room and taps "Book Meeting Room". |  |
+| Type:<br>External |  |
+| Relationships:<br>Depends on Library Database Service. |  |
+| Precondition:<br>Customer is authenticated/logged in; target meeting room is in "Available" status. |  |
+| Postcondition:<br>Meeting room status changes to "Reserved"; booking confirmation ticket/QR code is issued with a check-in countdown timer. |  |
+| Normal Flow of Events:<br>1. Customer selects an available meeting room on the map.<br>2. Customer inputs reservation details (start time, duration).<br>3. System verifies booking eligibility against quota and daily time limits.<br>4. System prompts customer to confirm booking details.<br>5. Customer confirms reservation.<br>6. Admin accepts the reservation.<br>7. System locks meeting room status to "Reserved" and generates a booking reference/QR code. |  |
+| Subflows:<br>Quota Check: System verifies if the customer has existing active bookings or active penalties. |  |
+| Alternate/Exceptional Flow:<br>Booking Conflict: If another user books the meeting room simultaneously, the system prompts the customer to select a different meeting room.<br>Limit Reached: If the customer exceeds daily booking hours or active booking quotas, the system blocks the transaction and displays a limit error message. |  |
 
 ### **UC-03: Filter Empty Libraries**
 
 | Use Case Name: Filter Empty Libraries | ID: UC-03 |
 | :---- | :---- |
 | Importance Level: Medium | Use Case Type: Informational / Search |
-| Primary Actor: Customer (Student / Staff) |  |
-| Stakeholders and Interests: Customer: Wants to quickly discover which campus libraries currently have the highest number of free seats or specific amenities. Admin: Wants to offload crowded main libraries by directing students to quieter, lesser-known locations. |  |
-| Brief Description: The customer sets criteria (e.g., maximum occupancy %, minimun occupancy %) to find libraries across campus that currently have low traffic. |  |
-| Trigger: Customer applies filter criteria on the main discovery/search screen. |  |
-| Type: External |  |
-| Relationships: Depends on Uses View Seat Density (UC-01). |  |
-| Precondition: Customer is on the main discovery page. |  |
-| Postcondition: System displays a filtered list of libraries ranked by availability or match percentage. |  |
-| Normal Flow of Events: 1\. Customer opens search/filter controls. 2\. Customer selects filter parameters (e.g., Occupancy \< 50%). 3\. Customer submits filter query. 4\. System filters and sorts campus libraries matching criteria from least crowded to most crowded. 5\. System presents the filtered list to the customer. |  |
-| Subflows: None. |  |
-| Alternate/Exceptional Flow: No Match: If no library meets the criteria (e.g., exam week high traffic), the system suggests the least busy alternative location currently available. |  |
-
- 
+| Primary Actor:<br>Customer (Student / Staff) |  |
+| Stakeholders and Interests:<br>Customer: Wants to quickly discover which campus libraries currently have the highest number of free seats or specific amenities.<br>Admin: Wants to offload crowded main libraries by directing students to quieter, lesser-known locations. |  |
+| Brief Description:<br>The customer sets criteria (e.g., maximum occupancy %, minimun occupancy %) to find libraries across campus that currently have low traffic. |  |
+| Trigger:<br>Customer applies filter criteria on the main discovery/search screen. |  |
+| Type:<br>External |  |
+| Relationships:<br>Depends on Uses View Seat Density (UC-01). |  |
+| Precondition:<br>Customer is on the main discovery page. |  |
+| Postcondition:<br>System displays a filtered list of libraries ranked by availability or match percentage. |  |
+| Normal Flow of Events:<br>1. Customer opens search/filter controls.<br>2. Customer selects filter parameters (e.g., Occupancy < 50%).<br>3. Customer submits filter query.<br>4. System filters and sorts campus libraries matching criteria from least crowded to most crowded.<br>5. System presents the filtered list to the customer. |  |
+| Subflows:<br>None. |  |
+| Alternate/Exceptional Flow:<br>No Match: If no library meets the criteria (e.g., exam week high traffic), the system suggests the least busy alternative location currently available. |  |
 
 ### **UC-04: Review Library**
 
 | Use Case Name: Review Library | ID: UC-04 |
 | :---- | :---- |
 | Importance Level: Medium | Use Case Type: User-Generated Content / Transactional |
-| Primary Actor: Customer (Student / Staff) |  |
-| Stakeholders and Interests: Customer: Wants to share feedback on noise level, cleanliness, temperature, or wifi quality, and read peer recommendations. Admin: Wants feedback on library conditions to maintain facilities and improve service quality. |  |
-| Brief Description: Customer submits a star rating, category tags (e.g., Quiet, Cold, Strong Wi-Fi), and optional written feedback for a library location. |  |
-| Trigger: Customer taps "Write a Review" on a library detail page. |  |
-| Type: External |  |
-| Relationships: None. |  |
-| Precondition: Customer is authenticated/logged in. |  |
-| Postcondition: Review is posted, library average rating is recalculated, and review is flagged for admin moderation if needed. |  |
-| Normal Flow of Events: 1\. Customer navigates to a library's profile page and selects "Write Review". 2\. Customer selects star rating and specific tags (e.g., Noise Level, Wi-Fi speed). 3\. Customer enters text comments and optional photos. 4\. Customer submits the review. 5\. System saves the review, updates average score display, and updates customer profile activity. |  |
-| Subflows: None. |  |
-| Alternate/Exceptional Flow: Inappropriate Content Filter: If text triggers automated profanity/policy filters, the system prompts the customer to revise text before submission. |  |
-
- 
+| Primary Actor:<br>Customer (Student / Staff) |  |
+| Stakeholders and Interests:<br>Customer: Wants to share feedback on noise level, cleanliness, temperature, or wifi quality, and read peer recommendations.<br>Admin: Wants feedback on library conditions to maintain facilities and improve service quality. |  |
+| Brief Description:<br>Customer submits a star rating, category tags (e.g., Quiet, Cold, Strong Wi-Fi), and optional written feedback for a library location. |  |
+| Trigger:<br>Customer taps "Write a Review" on a library detail page. |  |
+| Type:<br>External |  |
+| Relationships:<br>None. |  |
+| Precondition:<br>Customer is authenticated/logged in. |  |
+| Postcondition:<br>Review is posted, library average rating is recalculated, and review is flagged for admin moderation if needed. |  |
+| Normal Flow of Events:<br>1. Customer navigates to a library's profile page and selects "Write Review".<br>2. Customer selects star rating and specific tags (e.g., Noise Level, Wi-Fi speed).<br>3. Customer enters text comments and optional photos.<br>4. Customer submits the review.<br>5. System saves the review, updates average score display, and updates customer profile activity. |  |
+| Subflows:<br>None. |  |
+| Alternate/Exceptional Flow:<br>Inappropriate Content Filter: If text triggers automated profanity/policy filters, the system prompts the customer to revise text before submission. |  |
 
 ## **Functional Requirements**
 
 ### **User Registration & Login System**
 
-•   	The system shall allow students and staff to register/log in using their university account (SSO) or student/staff ID.  
-•   	The system shall allow admins to log in with elevated permissions to manage library data.  
-•   	The system shall allow customers and admins to log out securely.
+* The system shall allow students and staff to register/log in using their university account (SSO) or student/staff ID.
+* The system shall allow admins to log in with elevated permissions to manage library data.
+* The system shall allow customers and admins to log out securely.
 
 ### **Seat Density & Occupancy System**
 
-•   	The system shall display real-time occupancy percentages for each library, floor, or zone.  
-•   	The system shall calculate occupancy based on turnstile check-in/check-out data.  
-•   	The system shall display a "Last updated \[X\] mins ago" indicator when live data is delayed.
+* The system shall display real-time occupancy percentages for each library, floor, or zone.
+* The system shall calculate occupancy based on turnstile check-in/check-out data.
+* The system shall display a "Last updated [X] mins ago" indicator when live data is delayed.
 
 ### **Meeting Room Reservation System**
 
-•   	The system shall allow customers to reserve an available meeting room with a start time and duration.  
-•   	The system shall enforce booking quotas and daily time limits per customer.  
-•	The system shall allow admin to accept the customer’s reservation.  
-•   	The system shall issue a booking reference/QR code with a check-in countdown timer upon confirmation.  
-•   	The system shall prevent double-booking of the same meeting room and prompt the customer to choose another seat on conflict.
+* The system shall allow customers to reserve an available meeting room with a start time and duration.
+* The system shall enforce booking quotas and daily time limits per customer.
+* The system shall allow admin to accept the customer’s reservation.
+* The system shall issue a booking reference/QR code with a check-in countdown timer upon confirmation.
+* The system shall prevent double-booking of the same meeting room and prompt the customer to choose another seat on conflict.
 
 ### **Filter & Discovery System**
 
-•   	The system shall allow customers to filter libraries by occupancy percentage and amenities.  
-•   	The system shall rank and sort filtered results from least crowded to most crowded.  
-•   	The system shall suggest the next-best alternative location when no library matches the filter criteria.
+* The system shall allow customers to filter libraries by occupancy percentage and amenities.
+* The system shall rank and sort filtered results from least crowded to most crowded.
+* The system shall suggest the next-best alternative location when no library matches the filter criteria.
 
 ### **Review System**
 
-•   	The system shall allow customers to submit a star rating, category tags, and written feedback for a library.  
-•   	The system shall recalculate and display each library's average rating after a new review is submitted.  
-•   	The system shall filter submitted text against a profanity/policy filter before publishing.  
-•   	The system shall allow admins to moderate (hide/remove) flagged or inappropriate reviews.
+* The system shall allow customers to submit a star rating, category tags, and written feedback for a library.
+* The system shall recalculate and display each library's average rating after a new review is submitted.
+* The system shall filter submitted text against a profanity/policy filter before publishing.
+* The system shall allow admins to moderate (hide/remove) flagged or inappropriate reviews.
 
 ### **Admin System**
 
-•   	The system shall allow admins to manage the reservation.  
-•   	The system shall allow admins to manage moderation of customer reviews.
+* The system shall allow admins to manage the reservation.
+* The system shall allow admins to manage moderation of customer reviews.
 
 ## **Non-Functional Requirements**
 
 ### **Operational**
 
-•   	The system shall display properly on mobile devices.  
-•   	The system shall back up occupancy, reservation, and review data daily.
+* The system shall display properly on mobile devices.
+* The system shall back up occupancy, reservation, and review data daily.
 
 ### **Performance**
 
-•   	The system shall reflect updated occupancy data within a few minutes of the source check-in/check-out event.  
-•   	The system shall respond to reservation actions within 1 second.  
-•   	The system shall operate with an uptime of at least 99%.
+* The system shall reflect updated occupancy data within two poll intervals (60 seconds at the default 30-second interval) of the source check-in/check-out event.
+* The system shall respond to reservation requests (create, accept, cancel) within 1 second at the 95th percentile with 50 concurrent users, measured end to end through the API Gateway.
+* The system shall respond to occupancy, library and review read requests within 500 ms at the 95th percentile under the same load.
+* The system shall keep the error rate (5xx responses and timeouts) below 1% under the same load.
+* The system shall operate with an uptime of at least 99%; every service exposes a health check and restarts automatically after a crash (ADR-009).
 
 ### **Security**
 
-•   	The system shall enforce authentication via university account (SSO) with JWT-based sessions.  
-•   	The system shall provide role-based access control (Admin, Customer).  
-•   	The system shall protect personal and usage data in accordance with Thailand's Personal Data Protection Act (PDPA).
+* The system shall enforce authentication via university account (SSO) with JWT-based sessions.
+* The system shall provide role-based access control (Admin, Customer).
+* The API Gateway shall verify the JWT of every protected request before it reaches a service, and each service shall check the user's role again.
+* The system shall protect personal and usage data in accordance with Thailand's Personal Data Protection Act (PDPA).
 
 ### **Usability**
 
-•   	The system shall be designed with a responsive UI.  
-•   	The system shall provide intuitive navigation for both customers and admins.  
-•   	The system shall minimize the number of steps needed to check occupancy and reserve a meeting room.
+* The system shall be designed with a responsive UI.
+* The system shall provide intuitive navigation for both customers and admins.
+* The system shall minimize the number of steps needed to check occupancy and reserve a meeting room.
 
 ### **Cultural**
 
-•   	The system shall provide a Thai language user interface, with English as optional.
+* The system shall provide a Thai language user interface, with English as optional.
 
-**Architecture Decision Records (ADRs)**
+# **Architecture Decision Records (ADRs)**
 
 ### **ADR-001: Frontend Framework**
 
@@ -182,7 +194,7 @@ The occupancy list has to load fast on students' phones over campus Wi-Fi. Optio
 
 **Decision**
 
-Next.js with server-side rendering. Live occupancy is refreshed by client-side polling, not WebSockets, matching the backend's own polling model (ADR-005).
+Next.js with server-side rendering. Live occupancy is refreshed by client-side polling, not WebSockets, matching the backend's own polling model (ADR-005). Next.js serves pages only: every /api/\* call, from the browser or from server-side rendering, goes to the API Gateway (ADR-008).
 
 **Status**
 
@@ -190,13 +202,11 @@ Accepted
 
 **Consequences**
 
-•  	Requires a Node runtime to deploy; static hosting is no longer an option.
-
-•  	Needs an explicit per-route caching/revalidation policy, or Next.js's default caching will serve stale occupancy numbers.
-
-•  	The team must learn Next.js's server vs. client rendering model.
-
-•  	Occupancy is only ever as fresh as the last poll.
+* Requires a Node runtime to deploy; static hosting is no longer an option.
+* Needs an explicit per-route caching/revalidation policy, or Next.js's default caching will serve stale occupancy numbers.
+* The team must learn Next.js's server vs. client rendering model.
+* Occupancy is only ever as fresh as the last poll.
+* Next.js keeps no list of backend services and no gRPC client; adding or moving a service is a gateway change only (ADR-008).
 
 ### **ADR-002: Styling Approach**
 
@@ -214,13 +224,10 @@ Accepted
 
 **Consequences**
 
-•  	Every component (occupancy badges, room cards, rating widgets) must be built from scratch.
-
-•  	Accessibility (focus states, ARIA patterns) is manual work; no component library supplies it.
-
-•  	Long utility class lists need agreed conventions to stay readable.
-
-•  	Visual consistency depends on team discipline rather than an enforced design system.
+* Every component (occupancy badges, room cards, rating widgets) must be built from scratch.
+* Accessibility (focus states, ARIA patterns) is manual work; no component library supplies it.
+* Long utility class lists need agreed conventions to stay readable.
+* Visual consistency depends on team discipline rather than an enforced design system.
 
 ### **ADR-003: Backend Language & Framework**
 
@@ -230,7 +237,7 @@ The API polls turnstile sources on a schedule and enforces reservation rules. Op
 
 **Decision**
 
-Go. Clients use REST; services call the Library Service over gRPC; Reservation and User exchange asynchronous events through RabbitMQ (ADR-007).
+Go. Clients call the backend over REST through the API Gateway (ADR-008), which also translates REST to gRPC for the Library Service. Services call the Library Service over gRPC and the User Service over REST; Reservation and User exchange asynchronous events through RabbitMQ (ADR-007).
 
 **Status**
 
@@ -238,13 +245,9 @@ Accepted
 
 **Consequences**
 
-•  	Deployment is a single compiled binary, with no language runtime to install on the server.
-
-•  	Smaller package ecosystem than Node; some utilities will be written in-house.
-
-•	No team member has written Go before, so the schedule has to absorb ramp-up on its idioms and concurrency patterns.
-
- 
+* Deployment is a single compiled binary, with no language runtime to install on the server.
+* Smaller package ecosystem than Node; some utilities will be written in-house.
+* No team member has written Go before, so the schedule has to absorb ramp-up on its idioms and concurrency patterns.
 
 ### **ADR-004: Login & Identity**
 
@@ -262,13 +265,10 @@ Accepted
 
 **Consequences**
 
-•  	Auth has to sit behind an interface from day one so the mock and the real IdP are interchangeable; skipping this makes the swap a refactor.
-
-•  	Login availability is now tied to the university SSO service's uptime, which the team does not control.
-
-•	A second, independent auth path has to be built and secured for admin accounts outside the SSO directory.
-
-•	No student password is ever stored, since credential handling is delegated to the IdP.
+* Auth has to sit behind an interface from day one so the mock and the real IdP are interchangeable; skipping this makes the swap a refactor.
+* Login availability is now tied to the university SSO service's uptime, which the team does not control.
+* A second, independent auth path has to be built and secured for admin accounts outside the SSO directory.
+* No student password is ever stored, since credential handling is delegated to the IdP.
 
 ### **ADR-005: Turnstile Data Ingestion**
 
@@ -286,17 +286,11 @@ Proposed. Access has not been arranged, so this cannot be finalized yet.
 
 **Consequences**
 
-•  	Access must still be requested from each library's IT/facilities staff: unstarted work, not a formality.
-
-•  	Needs a scheduler on the backend (Go's time.Ticker or a cron library) to drive polling.
-
-•  	Missed tap-outs make counts drift upward over time; a reconciliation strategy is required (e.g., daily reset at closing, capping and flagging anomalies).
-
-•  	Occupancy lags by up to one poll interval.
-
-•  	If access turns out to be a daily CSV rather than a queryable database, this design has to be revisited.
-
- 
+* Access must still be requested from each library's IT/facilities staff: unstarted work, not a formality.
+* Needs a scheduler on the backend (Go's time.Ticker or a cron library) to drive polling.
+* Missed tap-outs make counts drift upward over time; a reconciliation strategy is required (e.g., daily reset at closing, capping and flagging anomalies).
+* Occupancy lags by up to one poll interval.
+* If access turns out to be a daily CSV rather than a queryable database, this design has to be revisited.
 
 ### **ADR-006: Database Selection**
 
@@ -304,7 +298,7 @@ Proposed. Access has not been arranged, so this cannot be finalized yet.
 
 The system stores three kinds of data: reservations, which need transactional writes so two customers cannot be granted the same room and time slot; reviews, which carry a variable set of tags chosen from a fixed list (for example quiet, strong Wi-Fi, many outlets) and do not need a strict schema; and occupancy logs from turnstile polling (ADR-005), which are append-heavy time-series rows read for recent trends.
 
-Options: MongoDB, MySQL, PostgreSQL. MongoDB has no cross-document constraint that prevents a duplicate booking, so the guarantee would have to be enforced in application code \- the wrong place for it. It does suit reviews, since the shape of a review is likely to change and new fields can be added without migrations. MySQL and PostgreSQL both provide transactional writes; PostgreSQL was preferred for richer indexing on timestamp ranges. Because the data has different needs, reservations and occupancy logs go to PostgreSQL and reviews go to MongoDB.
+Options: MongoDB, MySQL, PostgreSQL. MongoDB has no cross-document constraint that prevents a duplicate booking, so the guarantee would have to be enforced in application code - the wrong place for it. It does suit reviews, since the shape of a review is likely to change and new fields can be added without migrations. MySQL and PostgreSQL both provide transactional writes; PostgreSQL was preferred for richer indexing on timestamp ranges. Because the data has different needs, reservations and occupancy logs go to PostgreSQL and reviews go to MongoDB.
 
 For hosting, options for PostgreSQL were Prisma Postgres, Supabase, and Neon (all managed PostgreSQL). Prisma Postgres was chosen for its free tier and minimal setup, since none of these require the team to operate a database server. One consequence of that choice is worth stating: Prisma ORM, the tool usually paired with Prisma Postgres, is Node/TypeScript-only and has no supported Go client, so the Go backend (ADR-003) cannot use it. For MongoDB, MongoDB Atlas (managed) was chosen for the same reason, with a free tier.
 
@@ -318,15 +312,14 @@ Accepted
 
 **Consequences**
 
-* Row-level locking inside a PostgreSQL transaction is what actually enforces the no-double-booking rule for reservations in UC-02. Reservations must not be moved to MongoDB.  
-* The review schema can evolve (new tags, new fields) without migrations, so the review service can change independently of the other data.  
-* Reviews refer to users and libraries by ID only. There are no foreign keys across databases, so orphaned reviews are possible and must be handled in application code, and the Go layer should validate input (rating range, allowed tag keys) to keep the collection from drifting.  
-* No SQL joins between reviews and libraries; pages that need both are assembled in the application layer. There are no cross-database transactions, which is acceptable because reviews are never written atomically with reservations.  
-* No Prisma ORM types or migration CLI on the Go side; PostgreSQL migrations need a separate tool (golang-migrate, or Prisma’s CLI as a dev-only step). MongoDB needs no schema migrations, but its indexes must be managed in code.  
-* The team now runs, monitors, and secures two data stores, and depends on the managed hosting availability and free-tier limits of both Prisma Postgres and MongoDB Atlas.  
+* Row-level locking inside a PostgreSQL transaction is what actually enforces the no-double-booking rule for reservations in UC-02. Reservations must not be moved to MongoDB.
+* The review schema can evolve (new tags, new fields) without migrations, so the review service can change independently of the other data.
+* Reviews refer to users and libraries by ID only. There are no foreign keys across databases, so orphaned reviews are possible and must be handled in application code, and the Go layer should validate input (rating range, allowed tag keys) to keep the collection from drifting.
+* No SQL joins between reviews and libraries; pages that need both are assembled in the application layer. There are no cross-database transactions, which is acceptable because reviews are never written atomically with reservations.
+* No Prisma ORM types or migration CLI on the Go side; PostgreSQL migrations need a separate tool (golang-migrate, or Prisma’s CLI as a dev-only step). MongoDB needs no schema migrations, but its indexes must be managed in code.
+* The team now runs, monitors, and secures two data stores, and depends on the managed hosting availability and free-tier limits of both Prisma Postgres and MongoDB Atlas.
 * The reservations table also serves as the outbox for no-show events (ADR-007). Its row lock keeps a staff check-in and the no-show check from both acting on the same booking.
-
-### 
+* Each service reads and writes only its own schema (users, library, occupancy, reservation) or, for Review, its own MongoDB collection. Data owned by another service is obtained through that service's API, never by querying its tables, so a schema can later move to its own instance with only a connection-string change.
 
 ### **ADR-007: Asynchronous Messaging (Message Broker)**
 
@@ -338,10 +331,10 @@ Options: a synchronous REST call with retries, RabbitMQ, Kafka, and Redis Stream
 
 **Decision**
 
-RabbitMQ, with a topic exchange reservation.events. The Reservation Service publishes reservation.no\_show when an accepted booking passes its check-in deadline without a check-in. The User Service consumes the event from the durable queue user.reservation-no-show and records a 7-day penalty. Messages the consumer cannot process go to a dead-letter queue. Delivery is at-least-once:
+RabbitMQ, with a topic exchange reservation.events. The Reservation Service publishes reservation.no_show when an accepted booking passes its check-in deadline without a check-in. The User Service consumes the event from the durable queue user.reservation-no-show and records a 7-day penalty. Messages the consumer cannot process go to a dead-letter queue. Delivery is at-least-once:
 
-* Once a minute, Reservation locks the due rows (SELECT ... FOR UPDATE SKIP LOCKED), publishes each event, waits for the broker's confirm, and only then marks the rows no\_show. The reservations table acts as the outbox, so no separate outbox table is needed.  
-* The User Service keys penalties by reservation\_id, so a redelivered event changes nothing.
+* Once a minute, Reservation locks the due rows (SELECT ... FOR UPDATE SKIP LOCKED), publishes each event, waits for the broker's confirm, and only then marks the rows no_show. The reservations table acts as the outbox, so no separate outbox table is needed.
+* The User Service keys penalties by reservation_id, so a redelivered event changes nothing.
 
 **Status**
 
@@ -349,72 +342,268 @@ Accepted
 
 **Consequences**
 
-* Reservation and User no longer need to be available at the same time. While User is down, events wait in the queue. While RabbitMQ is down, bookings stay accepted and are published on the next check.  
-* Penalties are eventually consistent: they apply up to about a minute after the deadline, or later if the broker is down.  
-* The database and the broker cannot share a transaction, so an event can be published twice (for example, a crash after publishing but before the update). Every consumer must be idempotent. A future event triggered directly by a user request, with no periodic re-check to retry it, would need a real outbox table.  
-* A third piece of infrastructure to run and monitor, alongside PostgreSQL and MongoDB. Production hosting has not been chosen yet.  
-* The dead-letter queue must be watched: each message there is a penalty that was never applied.  
+* Reservation and User no longer need to be available at the same time. While User is down, events wait in the queue. While RabbitMQ is down, bookings stay accepted and are published on the next check.
+* Penalties are eventually consistent: they apply up to about a minute after the deadline, or later if the broker is down.
+* The database and the broker cannot share a transaction, so an event can be published twice (for example, a crash after publishing but before the update). Every consumer must be idempotent. A future event triggered directly by a user request, with no periodic re-check to retry it, would need a real outbox table.
+* A third piece of infrastructure to run and monitor, alongside PostgreSQL and MongoDB. Production hosting has not been chosen yet.
+* The dead-letter queue must be watched: each message there is a penalty that was never applied.
 * The event payload becomes a contract between services; changing its fields means updating both publisher and consumer.
 
-**Microservice architecture**
+### **ADR-008: API Gateway**
 
-**Step 1 Identify system operations**
+**Context**
 
-System operations are abstractions of external requests derived from the use cases (UC-01 to UC-04) and the actors (Customer, Admin):
+The browser currently reaches four REST services through Next.js rewrites, and Next.js route handlers translate REST to gRPC for the Library Service. Backend routing and a gRPC client therefore live inside the frontend, every service parses tokens and handles CORS on its own, and there is no single place to log, time or rate-limit requests, which the load tests for the performance quality attribute need.
 
-* registerUser(), login(): actor authentication via mock OIDC (ADR-004)
+Options: keep the Next.js rewrites as a Backend-for-Frontend; an off-the-shelf gateway (Traefik, Kong, NGINX); or a small gateway written in Go. Off-the-shelf gateways route HTTP well, but REST-to-gRPC translation needs plugins or a separate grpc-gateway build with annotated protos, and each brings its own configuration language. A Go gateway reuses the team's JWT package (internal/authn) and the generated Library gRPC client, and is one more binary in the same build (ADR-003).
 
+**Decision**
+
+A dedicated API Gateway written in Go (cmd/gateway, port 8080) is the only entry point for /api/\* traffic. Next.js forwards every /api/\* call to it and keeps no service addresses. The gateway:
+
+* routes each path prefix to the service that owns it through a reverse proxy (route table in Step 4);
+* verifies the JWT on protected routes and returns 401 before the request reaches a service;
+* translates /api/libraries and /api/rooms from REST/JSON into LibraryService gRPC calls;
+* applies per-client rate limiting and a timeout to every upstream call;
+* adds an X-Request-ID header and logs method, path, status and latency for every request.
+
+Services still check the user's role themselves (defence in depth) and are reachable directly only inside the Docker network.
+
+**Status**
+
+Accepted
+
+**Consequences**
+
+* The gateway is a single point of failure and a possible bottleneck. It must stay stateless so it can restart quickly or run as several replicas (Risk Matrix R2), and its capacity is measured in the stress test.
+* Every request takes one extra network hop; the added latency has to fit inside the 1-second reservation target.
+* The REST-to-gRPC facade moves from Next.js into the gateway, so the frontend loses its gRPC dependency, and the facade has to be kept in step with library.proto.
+* Adding a service means adding one route in the gateway; nothing changes in the frontend.
+* Request logs with latency and request IDs give one place to read response times during load tests.
+
+### **ADR-009: Service Discovery & Deployment**
+
+**Context**
+
+The gateway, five services, two databases and a message broker have to find each other. Options: a service registry (Consul, Eureka) with client-side lookup; Kubernetes Services with DNS; or Docker Compose networking, where each container is reached by name and addresses are passed as environment variables. A registry adds a component to operate and a client library in every service, which a fixed set of five services on one host does not need. Kubernetes solves discovery and scaling but is more to learn and operate than the project timeline allows.
+
+**Decision**
+
+Run every container with Docker Compose on one network. Each service is reached by its Compose service name through Docker's built-in DNS, so discovery is done by the platform (server-side discovery): for example LIBRARY_GRPC_ADDR=library:9082 and USER_URL=http://user:8081. Addresses are plain environment variables, so the same binaries run unchanged under Kubernetes Service DNS later. Every service exposes a health check (GET /healthz, or grpc.health.v1 for the Library Service), and Compose restarts a crashed container (restart: unless-stopped).
+
+**Status**
+
+Accepted
+
+**Consequences**
+
+* No registry to run; discovery is a DNS lookup handled by Docker.
+* No client-side load balancing or health-aware routing: requests to a crashed container fail until Compose restarts it.
+* Several replicas of one service are balanced only by Docker DNS round-robin, and everything runs on one host.
+* The environment variables are the contract between services; renaming a service means updating its variable everywhere it is used.
+* Moving to Kubernetes later needs Deployment and Service manifests, but no code changes.
+
+# **Microservice architecture**
+
+# **Step 1 Identify system operations**
+
+System operations are abstractions of external requests derived from the use cases (UC-00 to UC-04) and the actors (Customer, Admin):
+
+* registerUser(), login(), adminLogin(), logout(): UC-00 Sign In / Sign Out, via mock OIDC for customers (ADR-004) and email/password for admins
 * getOccupancy(): UC-01 View Seat Density
-
 * filterLibraries(): UC-03 Filter Empty Libraries
-
-* createReservation() : UC-02 Reserve Meeting Room
-
-* acceptReservation() : UC-02, Admin confirms the booking
-
-* checkIn() : UC-02, staff scan the booking QR code at the room
-
-* createReview() : UC-04 Review Library
-
-* moderateReview() : UC-04, Admin moderation
+* createReservation(): UC-02 Reserve Meeting Room
+* acceptReservation(), rejectReservation(): UC-02, Admin reviews the booking
+* cancelReservation(): UC-02, Customer cancels a pending or accepted booking
+* checkIn(): UC-02, staff scan the booking QR code at the room
+* createReview(), updateReview(), deleteReview(): UC-04 Review Library
+* moderateReview(): UC-04, Admin moderation
+* manageLibraries(): Admin creates, edits and deletes libraries and meeting rooms
+* unbanUser(): Admin lifts a no-show penalty
 
 # **Step 2 Identify services**
 
 Services are organized around business capabilities rather than technical layers, giving five services:
 
 * User Service: authentication, profile management, and booking penalties
-
 * Library Service: library and meeting room master data
-
 * Occupancy Service: turnstile polling and live occupancy calculation (ADR-005)
-
 * Reservation Service: meeting room booking, quota, QR check-in, and no-show detection
-
 * Review Service: ratings, tags, and moderation
 
 The Occupancy Service is kept separate from the Library Service because the turnstile ingestion pipeline is an unreliable, still-unnegotiated external dependency (ADR-005); isolating it means a polling failure does not take down library browsing.
 
 Penalties are applied by the User Service rather than the Reservation Service, because a penalty is part of the user's account standing, which the User Service owns; Reservation only reports that a no-show happened. The two communicate through RabbitMQ (ADR-007) rather than a direct call, so neither has to be available for the other to keep working.
 
+The API Gateway is not a business service: it owns no data and implements no use case. It is the single entry point that routes each /api/\* request to the service that owns it, verifies the JWT, and translates REST to gRPC for the Library Service (ADR-008). Keeping these cross-cutting concerns in one place means the five business services never deal with the browser directly.
+
 # **Step 3 Service APIs and collaborations**
 
-Each row below lists a service, the operations it exposes, and which other services it collaborates with to fulfil each system operation. (sync) marks a direct REST or gRPC call; (async) marks an event delivered through RabbitMQ (ADR-007).
+Each row below lists a service, the operations it exposes, and which other services it collaborates with to fulfil each system operation. (REST) and (gRPC) mark synchronous calls; (async) marks an event delivered through RabbitMQ (ADR-007).
 
 | Service | Operation | Collaboration |
 | :---- | :---- | :---- |
-| User Service | registerUser() login() logout() editProfile() viewProfile() applyPenalty() | Auth interface:  mock OIDC identity provider; swapped for CU SSO once credentials are issued (ADR-004) (async) Reservation Service, via RabbitMQ: consumes reservation.no\_show and records a 7-day penalty keyed by reservation\_id (ADR-007) |
-| Library Service | listLibraries() getLibrary() getMeetingRoom() searchLibrary() | source of truth for library, floor, zone, and meeting room master data |
-| Occupancy Service | pollTurnstileData() calculateOccupancy() getOccupancy() | (sync) Library Service: getLibrary(): validates the library exists before publishing an occupancy reading |
-| Reservation Service | createReservation() acceptReservation() cancelReservation() checkQuota() checkIn() detectNoShow() | (sync) User Service: viewProfile(): checks booking quota / active penalties (sync) Library Service: getMeetingRoom(): locks room status inside a transaction (ADR-006 row-level locking) (async) User Service, via RabbitMQ: publishes reservation.no\_show when an accepted booking passes its check-in deadline without a check-in (ADR-007) |
-| Review Service | createReview() moderateReview() getReviews() updateReview() deleteReview() | (sync) User Service: viewProfile(): attaches reviewer identity (sync) Library Service: getLibrary(): validates the library exists before a review is stored Data store: MongoDB reviews collection (ADR-006); no other service reads it. getReviews() computes the average rating when reviews are read. |
+| **API Gateway**<br>(Go, port 8080) | route()<br>verifyJWT()<br>translateLibraryCall()<br>rateLimit() | (REST) forwards /api/auth and /api/users to User, /api/occupancy to Occupancy, /api/reservations to Reservation, /api/reviews to Review<br>(gRPC) translates /api/libraries and /api/rooms into LibraryService calls<br>Upstream addresses come from environment variables resolved by Docker DNS (ADR-009) |
+| **User Service**<br>(REST) | registerUser()<br>login()<br>adminLogin()<br>logout()<br>editProfile()<br>viewProfile()<br>applyPenalty()<br>listPenalized()<br>unbanUser() | Auth interface: mock OIDC identity provider; swapped for CU SSO once credentials are issued (ADR-004)<br>(async) Reservation Service, via RabbitMQ: consumes reservation.no_show and records a 7-day penalty keyed by reservation_id (ADR-007)<br>Data store: PostgreSQL schema users |
+| **Library Service**<br>(gRPC) | ListLibraries()<br>GetLibrary()<br>CreateLibrary()<br>UpdateLibrary()<br>DeleteLibrary()<br>ListRooms()<br>GetRoom()<br>CreateRoom()<br>UpdateRoom()<br>DeleteRoom() | Source of truth for library, floor, zone and meeting room master data, exposed as LibraryService in proto/library/v1/library.proto<br>Writes require an admin JWT in gRPC metadata<br>Data store: PostgreSQL schema library |
+| **Occupancy Service**<br>(REST) | pollTurnstileData()<br>calculateOccupancy()<br>getOccupancy() | (gRPC) Library Service: ListLibraries(): polls only libraries that exist<br>Turnstile source behind an interface; a mock generator until access is granted (ADR-005)<br>Data store: PostgreSQL schema occupancy |
+| **Reservation Service**<br>(REST) | createReservation()<br>acceptReservation()<br>rejectReservation()<br>cancelReservation()<br>checkQuota()<br>checkIn()<br>detectNoShow() | (gRPC) Library Service: GetRoom(): validates the room before booking<br>(REST) User Service: viewProfile(): checks active penalties for the quota rule<br>(async) User Service, via RabbitMQ: publishes reservation.no_show when an accepted booking passes its check-in deadline without a check-in (ADR-007)<br>Data store: PostgreSQL schema reservation; a row lock plus an EXCLUDE constraint prevent double booking (ADR-006) |
+| **Review Service**<br>(REST) | createReview()<br>getReviews()<br>getReview()<br>updateReview()<br>deleteReview()<br>moderateReview()<br>getFlaggedReviews() | (gRPC) Library Service: GetLibrary(): validates the library before a review is stored<br>(REST) User Service: viewProfile(): attaches reviewer identity<br>Data store: MongoDB reviews collection (ADR-006); no other service reads it. getReviews() computes the average rating on read. |
 
-# **Architecture diagram**
+# **Step 4 API Gateway routing and service discovery**
 
-![][image1]  
-(Previous Architecture)  
-![][image2]  
-(Current Proposed Architecture; orange dotted lines are asynchronous events through RabbitMQ, ADR-007)
+All client traffic enters through the API Gateway (ADR-008). The gateway finds each service by its Docker Compose name through Docker's built-in DNS (ADR-009); the address of every upstream is an environment variable, so no service registry is needed.
 
-[image1]: <data:image/png;base64,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>
+| Path prefix | Upstream (DNS name) | Protocol | Access at the gateway |
+| :---- | :---- | :---- | :---- |
+| /api/auth/\* | user:8081 | REST | Public |
+| /api/users/\* | user:8081 | REST | JWT required; penalty admin routes need role admin |
+| /api/occupancy/\* | occupancy:8083 | REST | Public |
+| /api/reservations/\* | reservation:8084 | REST | JWT required; accept, reject and check-in need role admin |
+| /api/reviews/\* | review:8085 | REST | GET public; writes need JWT; moderation needs role admin |
+| /api/libraries/\*<br>/api/rooms/\* | library:9082 | gRPC (translated by the gateway) | GET public; create, update and delete need role admin |
 
-[image2]: <data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAA6IAAADbCAIAAAD4X7tEAABYhElEQVR4Xu29eXQUV57nO3/2O6fPzOvpedPV79UyPd3T1TU9nu6xjF1VCFcVYDCLWQpjzA5ms9gsdgQIgQQIsQsJLSAJCdCCBGgFCe1C+77v+66UhABjLIwL837KH3kJ7lWkMpUpoYz4fc733HPvL25E5lXKig/hzMj/8IogCIIgCIIgFMd/4AsEQRAEQRAEYfmQ5hIEQRAEQSiK/ft2qTPcz4E0lyAIgiAIQlG0Ndc+edSjtuzds4P7OZDmEgRBEARBKArSXIQ0lyAIgiAIQlGQ5iKkuQRBEARBEIqCNBchzSUIgiAIglAUpLkIaS5BEARBEISiIM1FSHMJgiAIgiAUhbGaO336n2bMmAYt9B8PdLMiVrDdt3cHdHbu2Drs7jjn3NmT7m7nsC+tc309qastF4sGhjSXIAiCIAhC4RiluRvWr8WOqLk3Q66xenFRNrQFeRm4NSL8pnQvDGouFjmpdXI8fPiwHXTs9u/GTYsWzZfOwT5qbmpyHLTBQQHSI4wY0lyCIAiCIAiFY5Tm3rkdgh2daJaxTUx5PT1c5879FDrYSnPMyQHayvKCJyNpLuvjJmnLOnQ1lyAIgiAIgpDFKM2FLFmyqKmh6onWNe3278Yi9EFqwXRRQPs0bdB59LBL3B3q92LCoXPh/OlL7hcWLJiH9Rkzpi1evBD7J44f4XbBzt3oO9iprS6FYkNdBbSLFs2XTjYwpLkEQRAEQRAKx1jNVUZIcwmCIAiCIBQOaS5CmksQBEEQBGEEGnPAH9SskOYipLkEQRAEQRBGYKUFVLWlpQVa6Ht6ekLn5MmT0N+0aRMW39baIezt7VmfP6hZIc1FSHMJgiAIgiCMAD0VRBY199ixY1u3boXOokWLmMWi5lZXV8+ZMweHAOs3NjbyBzUHcGTsjKi54p0QzJhrAT6sD48SdvMGdJZ+uZibJvcE2B0YWCcqMkycJoY0lyAIgiAIwiREza2pqWGCy7ZCu337dtaH9sKFC2wrf1BzMGnSJDgytIZobk5WKqpkZXlhcmIsfj1EQnxMYsLd6dr7LWxYv3ZYE52u+y6J4CD/pMR7UElJioW2v7cdJ4DmwtY9e3aw+dAuWDDP18czOuoWuxcv1jMzkuFo0Glref2ca6tL2V7SdsSQ5hIEQRAEoXyuX7/Ol8wHamtAQADTXCayTG2tra1ZJSoqKiIiAjrjo7mvDLua+0RrlufOnpTWQXNxK9NQMSdPHmtqqBIndHY0Ygc0F81Vmk2b1oHmQmft2pVYgd2lfTZT+uizZs2AFmV6xJDmEgRBEAShfMboXQEIqqrhgPKCfU6dOlVa5A9qVkbU3AkYdrfdUYc0lyAIgiAIwiSktjpq+IOaFUvUXNNDmksQBEEQBKFwSHMR0lyCIAiCIAhFQZqLkOYSBEEQBEEoCtJchDSXIAiCIAhCUYy/5t4KC1q8eCHeHkHT3Sp3l4YxDWkuQRAEQRCEwhl/zX3Y17Fv7w6026LCrIqyfHHOWIc0lyAIgiAIQuGMv+ZO135nxKlTx9F0O9vrxTljHdJcgiAIgiAIhTP+mjsRQppLEARBEAShcEhzEdJcgiAIgiAIRUGai5DmEgRBEARBKArSXIQ0lyAIgiAIQlGQ5iKkuQRBEARBEIqCNBchzSUIVTD4/bcUCoWisKz7ahX/x47QQpqLkOYShCoQTw8UCoVi6SHNJfRDmksQqkA8PVAUHCsrK2mHDSEN9dV65g+bL75YLBb1p6qyTCyyPH7UB+2UKVPETSzsmWt6OqCNiY6A4dNvB6RbIY8GeqVPPiEhTjwURcF5Pvgd/8eOICSQ5hKEKhBPDxQFR05zsWP7zXYc9nS3r1mzWjptwYL53EFqqiumT5/GJrBDbd+2FTtnzpxi9aCg62xfrDzs7wET3bZtC9uRHZlVUKOlEyAFBbmtrY1sJmjuVT8ftnXF8uXQZqSnQvvZZ5+Ju1NUErmrue3t7XyJUCWkuQShCsTTA0XBYc7HCSX22XDKlCl5uVncBOnMvt6uQa2GcgfEoCJz9atXfXEoHjMlOUE6mbXSIZvAwCFezZVOGNReyuV2hHR3tUuHFGVH7mpuc3MzXyJUCWkuQagC8fRAUXBqqitA/oqL8tEU8XrnoOCU0E6fPo0NubA5VtqrvNBGhN9mM+3s9kknsDor4nNgsEvCbM63Tx5CZ/36dU+/HYBOWWkR99C7d+/CfaGPmsuOIL3A7OR4tLmpjm2iqCpyV3MJAiHNJQhVIJ4eKJR3GHy/AZe4uLti0aiQ7Kotcprb19fHlwhVQppLEKpAPD1QKBSKpae8rJj/Y0cQEkhzCUIViKcHCoVCsfTIXc3Nzc3lS4QqIc0lCFUgnh4oFArF0iP3ETS60wKBkOYShCoQTw8UCoVi6ZG7mksQCGkuQagC8fRAoVAolh45zaUbihEIaS5BqALx9EChUCiWHvoImomcjyr/2epAyJdnUup7B7ue/DjWcQwr/WhPJDyiy+1S/tmMAaS5BKEKxNMDhUKhWHrkrubevXuXLxGvXj159mLxqSRQzPulPaKAvsP8w4absx3vdzx8xj9jkyHNJQhVIJ4eKBQKxdIj9xE0um8u41ZWM3itaJYTOX+/JvBKfA2/klFBmksQqkA8PVAoFIqlR+5qLgF8sDNCNEjLyq9twl7+9BO/MGMgzSUIVSCeHigUCsXSI6e5oaGhfEll/P0aC7uCqyf82oyBNJcgVIF4eqBQKBRLj9ybFm7cuMGXVMY/bgoVfdFCw6/NGEhzCUIViKcHCoVCsfTIXc0NCAjgSyqjtP0pCGJYTrtojZaS5Mq+de4ZXaS5BEGMiHh6oFAoFEuP3NXc7u5uvqQyStq+Zb5Y1fXdz1YHxpdpRJWcgJlxJC634ZG0wq/NGEhzCcKyuXr1qpWVlddIuLu56omn5yUvL48rV7x9fS9f9fO5fs0/8Ma14KAboTeDw8JC7twJi4i4HRUZfjcmKvZeTPz9e0mJ91OSE9LSktPTU7MyH+TmZObnZRcW5JYUF5SXFVdWlFRVldXUVNTXVTc11rU0N7S3NXV2tPR0t/f1dvX39ww87BVPVxQz5vGjvkcDffBzftivgR94X183/OR7NZ3wEkC6u9rg5ehob4bAS9Pa0givUXNTPbxYjQ21DfU1kLraKngFIdXV5fBqwmsKqSgvKSstKi0phBQX5RcV5sGLDoFXPy83C34NcrIzsrPSMzMfQOB348GDFPglSU1NSk1JhF+Y5KR4SGJCXEJ8LPwW3Y+7Gxcbc+9uNORuTFRMdGR0VERUVHhk5B34fQsPvwW/eLdvh8JvYGhocFhoMPw2hgQHwq8lJCjwOvyKwi8qJMDfz/+qL/ze+vldgV9gHx9v+E2GeHt7wm81/G5DLl1yE3/t9cT1wrnTp12cnY87Oh5xOGx/8IDd7t07bW2/2bJl89ebNq5fv2716lUrVixftmzpkiVfLF68+M8LF86fP2/u3DmzZ8+aOXPmtGnT/vSnP3388cdTrK1///vfW5nAp5/OhIeAxz161AFWAT86eCHovyAWum+uHGUSzZXGMawUlNcprEzc9K6SWNELT+nAjSJxE4ZfmzGQ5hKEBZOens6XZBBPDxQKxaLz9NsBsai2yL1pwcPDgy+pDDnNlcvxW2X4PRFLTqeE53WIE0xJXEnP8nOpv7YJg+N/4hB3MrxCnKMn/NqMgTSXICwYKysrviSDeHqgUCgUS4/cmxYuXLjAl1SG9E0Llh5+bcZAmksQFgxpLoVCUXPkruaeOXOGL6kM0lyENJcgLBjSXAqFouacdHbi/9gRWkhzEdJcgrBg5s2bx5dkEE8PFJXncXnyy8ddikz6rt+L66UoMvQRNDlIcxHSXIKwYGxsbPiSDOLpgaLykOZSFBC5Ny04ODjwJZVBmouQ5hKEBePs7MyXZBBPDxSVhzSXooDIfQTNzs6OL6kMAzX339e4TrP1+XirN/T/acmp3yw7+8tFztD/6+mH4gtbYQgdHLJddrjHskpFxxPxmLgpqaR94cEbeXW921xjFtsH4Y6waf6B6/P2X7P3S4aDi/sOG35txkCaSxAWjKenJ1+SQTw9UFQe0lyKAiJ3Ndfwv41KxRDNRaPlUtDQz/qc40Ins6YHh5djhm5zK9XcNc532LTfbfK4m9+Mwy8cQrjjWK1zY3sZEn5txkCaSxAWTEhICF+SQTw9UFQeUXMPTPq/IBeX/B9phZtTn3pbuun4Jz9nO3IzxyjJlw6KRS6kueoJfQRNDkM0l8t7K89Dm1w69P3AUjGVXsqFfnbt0LepjXg1V6q50Gbp/Bgyb/816TFHDL82YyDNJQgL5u7du3xJBvH0QFF5htVcbCtjr7G+tHPbYY10Gmulu0tzacVH7AjuSz+Azg+9zWzHe6e2Q5viac89EHdA3PSwJh+HoLms3ledw3aUhjRXPaGPoMkxCs1tf/QDtGWtr79o1+ZcFNsUV9gKbWR2I6sY5alNfYNiEdLcP3ydC782YyDNJQgLJiEhgS/JIJ4eKCrPsJrLlPHswv/JRLM9Px7a/JuuuAn0FNoY5y3Q/viwXbq79GgvJVdeW3Njj3/y86gTX8OcVG8HNvlZRzV0apNDsQKBOV3FKdJjMqnFSvjRdS+1Ao1HEx/0JWmumiL3poV169bxJZUxCs2VxiiLHevwazMG0lyCsGDoy34po86wmgvt+c/fK4n0YXLJdSB/GegIO7iCzc+5flpON6Wae+QP/wXm9NfksgPCQcTjS48jrTSlR2EHjlka5YP1olsewz4uaa56IvcRtGXLlvEllWGi5k6o8GszBtJcgrBg8vLy+JIM4umBovKImmtiktztxKIhedZRA7aKb/M1S0hz1RO5q7nLly/nSyqDNBchzSUIC6akpIQvySCeHigqj9k1d+KENFc9oY+gyWFGzf3r6YfE9zC0DQy9kXd8wq/NGEhzCcKCqaqq4ksyiKcHispDmktRQOTetLBr1y6+pDLMq7nSDgguii/e+BY6Xx696RVdCMMNp8LnH7gu3cUs4ddmDKS5BGHBNDQ08CUZxNMDReUhzaUoIHJvWpg8eTJfUhnm1Vx2QRfaxYeDqzq+ZUNoPSILcKbNuShIalkHaS5BEGags7OTL8kgnh4oKs8719yiWx5iccSUx1wVi1xIczGtzwaUGrZGuau5VlZWfEllmFdzWccruhCVNyS1Glr8YrM7GXVsglR/zRV+bcZAmksQFkxfXx9fkoGdFUIDqzraXqgwogSoPPo1F299MNjd8LipBIZlMX7Qlkb5PGoogvrT1gp2b4Tq+KAHPk41iTebM6NxR2hzA88e/+TnXmsmJ7rtr00OTfV2gDpMw4NnXXOBIrtJQvSJzXi0yGMbseK+9IMjf/gveHMGCBwciime9j8+bA/avagt735hqLv02XIhzcWIdqiYsDXKXc2dPn06X1IZZtRcPfm7zxzBaEtbXt9qd4zCr80YSHMJwoJ5/PgxX5KBnRVAcwce/qTCiBIgF01Pj+VGXI5c9GtuwsV9kJdabe2tzGL1JHc7qKR4Hb604qO0y0eg8rRtSHlhMsgrzgfBxd3DDq7IuXEGOiC717/5DLaCueJB/DZNR83Fa7pMmrlHr4y9jkeTPgGczypi9Guu+EOzoIjL0RPRDhUTtkY5zSXGR3PHJ/zajIE0lyAsmMHBQb4kAzsrkOaOGNEtxi5WVlbY2bBhA7QXzp/HYW5urjjZkIjLkYt+zQ3YOhuCNsm+geyl9pLqydn/HYZeayaj5vpsmPpS4p3YgbavKhvazsIkaP8y0BG4axHUYYhbIXnBF0oiLuMQJuCOjxqKXmq/Qxi/nwKCX3WGfZzcW5GpeM1lvxhcuLV89tlccYEHDx7AjmiHiglbrNybFuA/KL6kMkhzEdJcgrBgXr58yZdkYGcF0twRI7qFnhTk53t6eGgkXjJHCxvOnDkT2uysLBz6+Pjs2bMHOtVVVbiXtbW1Rqe5x44dcz5xYteuXbm5uStXrpQ+kIERlyMX/ZpreApCL4rFdxsDNfewvf2SJUs02pcs/M4d6Jw/d66kuHjVqlWNDQ3QwRdx3rx5OL+5qQkra9eswb3wtbP95hsc4jTY6nLyJPsFkBNWjKura11tLTwWHAr2YvOhLS8rkx4WIy5n0Z//DJM3rF/ndvGCu5srxEqHaIeKCVu+3NVcKwPem6uxZPjFCJDmIqS5BKEK2FmBNHfEiC6iJ2CxixYtgg4aD3MUjVZQ5BSnVIt0Pmruzh07mhobYZj7rq/mWnQM1Fz4OWdmZEAnJCQEhzZff52r/clDv6G+nvvZRkVFSfdlr530pZRuepCWBh0/X19pnSEt4oN2d3WJB2ePiBGXIyYzIw07oh0qJmyxcldzrYzR3IiIiC1btkAH9tq3b9/Qj/1tFi5cyFUYx48flw7FfYelrq4OO/Hx8QbuwsEvRsDsmoufKrscU4SdL4/eZJvSyjvrur+7l99S0ND/u00e4r4mhl+bMZDmEoQqYGcF0twRw4mF/qCRgBLl5ebevHnTx8cHixqt5i5btiwgIAD6eKEOO8xgkNycHGjPnDnj5ekJmjtv3ryhImmuCTFcc6dOnQodNzc3HGp0bxfBl6a4qIjVsXP//n3orF279sTx41i30v4TpbysDDpbt25l+2p0mltSUsIeEcPemsImw4MW5OfjXnGxsWmpqdjHfztJIy5HT0Q7HHW2XLkgFjF/teBPdsFXxDrbKhZND1uj3NVcQ2DK6Onp2d3dDZ3Ozk5oh37sAq9fVl0H+2lpaWwr1zlx4gQ3n23S6DQX/n2Vl5fHNrFpuJXVwbzZjgx+MQJm19wvHEKkw9qu77BzPbGiSyfB0L638vzRgDRxd1PCr80YSHMJQhWwswJp7ojhxMKoiF4yzhGXIxfSXC5DSiEUxye5Mv+qEZ+SuBw9Ee1w1AHNdU+IbNVq6/HwQOjs9PfATSiy17ISQXahP93e9n3bdcxuoZPVWns6+ib2zWW9bI1m0VyOof8/IyE/Px/apKQkaO3t7eEfrnfu3NFIjHboH7c6WLFJ+xYXGxsbJq9sjkZyNRc1F/vY4Sb7+/uzvhR+MQJm11x2j7CORy+gdfBPwWFmTQ+0v1zkDO3Cgzegdbr2QNzdlPBrMwbSXIJQBeysYIrmXrta0NH2XKzrifUHLmLRwK2anh/F4qgjSoBcRNuwoIjLERO7/P8bfNeai58h89/8qbhJLnHndorFYTM6zbWIiMsRc2/J/4Md0Q5HHdBcNFTnyCAImKt0a/PTftiKm0BzoXK7KBPnM7XdFeCJE8SDjyJssXJvWjh06BBfEmDKGBcXFxoaqtEq5kn8/y3adyMkJyezOQsXLjx37hx0vL29N2zYMPSead3V3x78B4mW3NxcDw8PGC5duhQcV6O9Nrxp0yamsDgNdBnf7cBdzYV27dq1Us2FflFRERsy+MUImF1z9SS9qhva3LpecZNZwq/NGEhzCUIVsLOCiZr7sP+n+tpv79+tB0OFBAYUQXs3quaTKeehExVRDdOSE5ugvX2zHOc8SGmd/6nHgFZq1y4LgDbiVuWSBZehsmvb7Sse2bgJ90LxhQO6n0/HPrSff+aVENdgtzuyqeE78VkZGFh7xoFPYhb9J/ajgD4Oc0980Vebx4YdTXU9XZ1tNWXQwhmss7m+p7sLht2d7TCEDqa7o+31sHZoiBaiHZa311e+GdaUtddVQB+Kr/etLR8aNlThEGd2NFTjsKenW/oo8NDdXR1sOHRGxSfT1dHRWKsddg8NO9s7GmtgiKvozL/7YO8fh4xn6c+kS47/6h+Ttvybds5/FDX3WUd1c2Y0CGjgrkWnP/tn6Nx12cq2xrvukd7fIPOqc6qXA3Rasu/WpYTVpdyCvteayUW3PctjruK9FOpTb2PngPaWC60596BTEunzUqu58HDQZl1zwQk3bOfjkXH4UndbBqwkuu2HFu/ae2XdH92XfsCeiRjQXPgJSF/invKht6tCv9Rr6ONi8NPDHzK81tiBV3loqP2RSn/ar6dpXx02bK8feu2g39XWpB0OvbLaYYuu0zzUtrfisLO1kR12aNjy1pAdFp6DdIjPbWi+5LnBKsr99ktf06ogJ/G3GnJ/1S9EOxxF0FNbvnuYWFOa3VYH/aiyHG7Cv21bsz/oiuPta3g1F+uLXA7h1mtZiSG5adjf5H1WfIhRhK1X7mpuUlISXxLgzVGHFX4wVEJmZiZezRVB0zUQqb8ayLDvoNBMMM0d6/BrMwbSXIJQBeysYKLmtrV8L70EG3G7kg2ZlYKhnjqRhH0s2qwLYnPYNHYQVmQ5sCcKrBeKft650oObEvYTGDFMNSwx4nLEpGy1Ghzuaq70FraouX951ImbfuhtHvLU3Fgcgv4+biz23/xpX1U2DEFzX2rvAgaaC50XfS1xZ3fgF0BAYC/UVpz2UvtNZuc/f+/7zjqo/6BpYl6LiTu3E478XNPIKrlB52AC1PGuvem+x14Kt9qVRuVXcwvPfYUd0Q4VE7ZYuau5hsCbo0XBL0bHpEmTfvvb374izdVBmksQqoCdFUzRXJaifA122tuH3sNQU/VYnNPc+PrKa0+3vvceZD5ox05OZqe4VZr+vpdi0fCINiAX0S1GHfy0vvghJAOTlJgoFvVHXI5cRM3FyLmjBWUiaK67u7tmuDfXmhhxOXoi2qFiwtY47NVcK5nbLAQFBf3xj3/ENwkAlVqqq6tramrq6urq6+sbGxubmpqatbRoadXRpqVdR4eWTh1dWrp19GjhzdSs8GvTAZqLqyPNRUhzCUIVsLOCWTTXEiNKgFxEt8CkpaayPp5Ierq7h+5DpKuwOlZyc3JQc6Hi5OQk3Xrjxg12qKVffokdFCN2NNjd9ptv8J6sLidPwlbc11P7zj82k4u4HLnIaa4CMg6ay15u7hcAkq99tyWnuXpeMqMiLkdPRDtUTNgah9XcYQkJCeEqvDlaFNxaGFY6xSfNRUhzCUIVsLMCae6IEd0Cg5rb2tLi5+sLSUlORm2Ffkd7O/MeaF1cXDIzMnx8fJjmYn3f3r3YOWxvzw4bGRGRnJTEPVZpaSnMTEpMlN691dvbG+/Fu2rVKm4+i7gcuZDmmhL2cnO/AKwo1Vwr3ZeAmB5xOWI++vBD7Ih2qJiwxRr+pgUr4RIvJ44wgbvHgongb4Lcm3r1MPT/f0aCW4vIRNBcdnOG+p5n4lbDw6/NGEhzCUIVsLMCae6IEd0Cw67mwqkrOCgIz2E4ZC3miIODdKu0g33QXDYfNFc6jT2ElURz2dYTx4+zOcNGXI5cSHNNCb4iCxcswD5r2abOjg4vT0+8TbKjo6N4hNFFXA6ksaHWy8tj/fp1s2fPmmJtjU9g8uTJoh2amIq+du/kmH2Bl4e9L9gcp702V85h/3CoHwwh4jSzhK3d8Ku5YWFhXIU3Ry3wo7ujRaO9H8LrL3nRbRr6Sjydv8I/XaKjo6FTVlYWGBhoa2uLm6SH6ujowBvoIrGxsVCHY65du3bDhg23bt1i8/F/11RVVUVFRR05cgR3x/s5wO+P9LAItxYRAzU3T3d7hPK2x9A2aJ75xpYutg+CfnP/IG7a4R6Lwtr5eOhWYpiKjiddupuLsZvmsq0PKruklbru7y5FFrAhdFYdv5WlvROZZ1Qh20su/NqMgTSXIFQBOyuQ5o4Y0S3GLZkZGRhxk4ERlyMX0lxTMqQdQlEuRk3WH24tcGRxgawo2qE01vs2Y4fd84uTVxguPXsUt/6LzfKy3nbo1D/RwI5YFOdDPj91eKuPa6v2nmLcJuwsO+eIw9/u3siOIJ3AWj1hi71z6yb/x85gOHFE0EehM/Rt27oKdsBNocX/02KluxsDm499vIkYG+ImV1dXPz8/rLS2tvppGfriQy34HRObNm1i15ITEhKgbWhogHboO0eGu0UDvxgBAzXXL65ULKLmsszY6SfOgRQ09Fe0D8kui9R0pcP6nmeHfJOlmoud6Tt8pfPlwq/NGEhzCUIVwPngo48+GhyV5g57l4Pa6mE+djbiXtI63lMM88mU8+JM80a0AbmIbmFBEZcjl7HW3OOf/Bw77DNtVXE32NbnPW9upGD2jIPmvquIy9ET0Q5Z/kpy5y/ozzq6B/thBencNDTOf92ykvVRc7nbiuFkaMOLsy6n3GsVNBfa0p5WVpnhsFO/y4JVi0UWtsYVy5egTQ7LkiVLzp49y/811MGJI4DfhabR3kEM2ubmZhy2t7drtJqLHyzr7OzkPmGWm5sL7cWLFzXDKSmjuLiYL2lvnavRPaLGsHcsaMynue8w7HvURgy/NmMgzSUIBRIbG3v69OmDBw9u0LFu3VfsT7+ogNIwDZ0z3Y3d/EtaPHE0Hm+Xy3YJCSyBNjG+Edq9tuEDWoWV09zga8XQbrcJbax/OqB7ONRcvO3utasFOOzs+IHtlZbcwiZjYHfxTmR6Aj+BzZtt9u7d7eR01N3NNSoyPDsrXTQD9WSsNRfs9oGPI3awItVcTXm6uIu5ol9z1RPRDsVkNFWJxdebmqvFolwyW2rEImTp2aOtWs1tftrfqv0iCW5CmaYN2geNldJiWkMFN40LW6Phb1oQ4c1xJPBqrhwNDQ1Xr17lq2MGvxiBia+5hodfmzGQ5hKEorASPmaBDBpzNbe25gm0+FUOA1q5jI2pw01Q3Lw+GCoP+yXztVd28dZgn3/mhbtIBVQ6mdVDg0vZEL0W77YLsd0chp32tkHsiJqLQ8M1V5QAzPVr/mJRDRlrzWVhN7jFjp773ZorKtfcSZMmYUe0Q8WELdbwj6CJ8OZoUfCLESDNRUhzCUIVsLOCIZo7YupqnxjulxD38+msb5SbisFrxqOIaAMqz7hp7rB50lQqFs0VNWuutfVk/J82H3zwgWiHiglbrylXc5UNaS5CmksQqoCdFcyiuZYYUQhYCgpyxaLi8241d0yjWs1taqyD9v3338ehaIeKCVsyaa4cpLkIaS5BqAJ2ViDNFbNv316xqPiQ5io+oh0qJmyNpLlyGKK57EZgkITiNmiTS9u5TdCuOn4LOvu943HmsMfBpFd1sx3tLidgsW3gh71e95c7hbJpOAEeC1q8rZj+8GszBtJcglAF7KxAmitm8eLPxaLiQ5qr+Ih2qJiwNZLmymGI5nZJbhaG9sk0F9L+6AfY6uCfstsjDoZz9wVAey+/JankzRwWkFoIHgcdF4dhD2phyN1NDO+Vi4/F6nrCr80YSHMJQhWwswJprhj8cJ7aMnaa+6yj5qX2A2dX1v0RO2wT+ywatmP0WTTSXIxoh4oJW6MpH0FTNoZoLirmv69xhU7Hoxd7ve5DJzyznm1izgr9rJoeVhQPBQf5pyWnnAMzoMU5uBemsPHhl0dvsgNC55eLnB9UdModjQu/NmMgzSUIVcDOCqS5YqyGu8e+4jN2movy+qyj+rnmrZvjtufHs62nP/tnaLOvnRJ3Nz2kuZj/tP0LpYatka7mymGI5o4ihlip2cOvzRhIcwlCFbCzwjhrrs26IOzgDRYwa5cFiDPHOuUN2aIHYEhzzZv2giGdBc3tr8mFzvnP34M27OCKluy7L3WaC8XiO97ivmYJaa56Qporxxhp7jsJvzZjIM0lCFXAzgrjrLns3mHYqSh7iMMVi/3EyWMa6amxpPatL4YgzVVYSHPVE9JcOUhzEdJcglAOg4ODfEkHOyuMs+ZOnEhPjZO3/Y10SJqrsJDmqiekuXKQ5iKkuQShHAYGBviSDnZWIM0dJM3VhjSXooDQR9DkMERzT9/MEotcptn6iEVTMop39/JrMwbSXIJQDu3t7XxJBzsrkOYOkuZqQ5pLUUDoaq4couaCX87e4/93nzlCp/PxC7sriaC5AfHlbCu0/vfL8GYIx64/6NLeDgymwfCqro6Tp+/wxQ4ejQWGUCxteQRtRFYDq+CO0P5ykTO0G06FQ+dUyJBkzz9wHSrwNNY432HH58KvzRhIcwlCOdTW1vIlHeysQJo7SJqrDWkuRQEhzZVD1Fzf2FJ0zejcJrxGy13Nbel/jh3UTTRU0Fy/uKEdS5oHpJMLGx/CtMrOb93C85gBi54qV5HWoQ+OCw905GoqNxnDr80YSHMJQjnk5+fzJR3srECaO0iaS6EoJaS5coiaa7nh12YMpLkEoRzS09P5kg52ViDNHSTNpVCUEtJcOUhzEdJcglAOcXFxfEkHOyuA5tbVPFNhpKdG0lwKRRmhj6DJQZqLkOYShHK4c+cOX9Ihnh7UHE5zP/74Y3EOhUKZ+KGruXKQ5iKkuQShHIKCgviSDvH0oOZwmvvpzJniHAqFMvFDmisHaS5CmksQysHb25sv6RBPD2oOp7krli8X51AolImfk85O/B87QsuYau7cfQGeUYXQQt8lONP3XslujzhxmrnCr80YSHMJ1aGxWPiVCJw/f54v6RBPD2oOp7nbtm0R51AolIkfuporx9hp7nsrz0O72D4IWnu/ZNDc3yw7m17VLc40V/i1GQNpLqE6eHm0HPiVCJw4cYIv6RBPD2oOp7n29gfFORQKZeKHPoImx9hpbkpZR5dEc3+5yFmcY97wazMG0lxCdYAvWllZYTssTCulfYanpydfepth99LI1FtbW6FtbGzkNwwHvxKBgwcP8iUd4ulBzeE098plL3EOhUKZ+KGruXKMneaKGWvT5ddmDKS5hOpAZTx69Cjzzu7ubuxwJlpbW8uKzIDz8vK4YlNTE/R9fX3t7OywAnh4eEgPhbCDYGfmzJmsjh1bW9ucnBw2x9XVFWeeOHECWm4h8+fP5yo7d+7kKgzx9KDmcJqblBgvzqEMm++fPRnniM+BQmEhzZVjPDV3rMOvzRhIcwkLo6amBs1v8uTJ4HkbN250cHC4cuVKeHh4UlISOGJFRUVzc/OjR4+eP3/O76wFDLKkpEQql6wvVtB02XDDhg2ouaxoJdFc6UzpocQit5UBmgvt1KlTWUW6C78SgXXr1vElHeLpQc3hNJdiYB4N9Gt6esY53z55KD4TCgVDH0GTgzQXIc0lVAezRg6pUwLl5eVs5v3799kc0Ny6ujq2ydramuuwQ1VVVeE0hnQrdoAlS5ZIt4Ljsjlz5syRzudXIrB8+XK+pEM8Pag5pLmjC2junj17hn4ne3q2aIkIDw8OCoLOsmXLoHW9cIGT1KF/UgrmCnn9n4BQx03SIWkuRU/oaq4cpLkIaS5hSej5+gPDea2cRoK6aRQLFy7kSzpGcTSNAe/NXbBgAV/SIZ4e1BzS3NEFr+ZWw7/fenoCAgLq6+oyMzLSUlNhmJSYCG1IcDC66REHBxRW6MRER0Pg34HMX+Pj47EP9aioKOhERkRAxdfHp7ioiE3DXUhz5bJy5QqxqLbQR9Dk+H/XDH1ETBnh12YMpLmEJbFixQq+ZDy8PFoO/EoEZsyYwZd0iKcHNWdMNXfgYW9fb1d3V1tba2NTY11NTUVlRUlJcUFBfk5OdkZm5gMWUMS0tOTUlMTkpPjEhLj4+/di78XcuwvqFxEVFR4efuv27dDQ0ODQm8HBQTeCAq9fv+Yf4O931c/H1/fylSveXl4eHh7ubhcvQC66nr9w/uz5c2cg586ePnP61OlTLqdPu7i4OJ88ecLZ+fiJE8eOH3c6dszRyeko5OhRhyNHDjs42Dsctj9sf8j+0MFDBw8cPGB3wG6/3f59+/ft3bdvz969u/fs2bV7985du3bs2GFra/tNYGBgfX09qGf9G+oQsNXXPR337t2DNkLrr5e0wBD60dHR2GGHwD62DQ1DHWgbGhqstO9x9/S4BE8Mnh48SXi2Dg5DTxuePCwBFgIrgnXB6mCNsFJYL6wa1g4/Afg5wE8DfiyuF87Bz8fdzRV+XJ6el7y9PeGnBz9DP78r8MOEHyn8YANvXIMfckhw4M2QoLDQ4LCwkDt3wuAliIy8ExUZDq8IvC7w6tyPuwsvE7xY8JLBC5eamgSvYHp6KntNszIf5OZkwstdUV5SXV1eV1sFvwMd7c093e39fd2PBvrEXxiKKaGruXro//a5qIyWlV+tD+ZXZSSkuYQlYWXA/7hXMx9//DFf0iGeHtScGXt+JRYpI0b63tzjWuJiY2/evMmu5kaEh7MJeFE2IT7e1dU1OysrJycHhuvXr8c6u2QL6Whvz83NZRXsLFu2DDqOjo50NZeiJ6S5I7LXP/dnqwNFg5zI+flXQevcHvArGRWkuYQlQZqrHz0/H/H0oOYsP/aRWKSMGPoIGmWihd60MDqOBBeC+846ej++TCNa5vgktapvmv09eBof20Xzz898kOYSloQejSNe6f35iKcHNecbtwVikTJiSHMpEy10NdfsROW1fu6SCPaJ+ceNN0FGl59LPRleEZTRmlE70Ng3KDorpLLzu6y6gdjinssJDVu8s3+z5RYe4Tebw2Y7xkXktPQ9GeQfbOwhzSUsCT0aR7zS+/MRTw9qzpmQHWKRQqFYXOhqLqEf0lzCktCjccQrvT8f8fSg5gQluIpFCoVicaGruYR+SHMJS0KPxhGv9P58xNODmlPXWiwWRxHx/7CPUZ5++0h8dAqFQppL6Ic0l7Ak/vjHP/Ilk+Hv2jWR4J/rSHz++ed8SYd4eqCYHqah9vb2eH+AlStXsjsJ7Nq1S6qqt8LC1q5dK614e3nhzHnz5tXX1Uk3cSHNpVCGDb1pgdAPaS5hScyePZsvmQyYx9KlS8Ep5+kA7bh16xYbMunE7znjKC4uhrazs5PfYAxyu/PPdSRu3LjBl3SIpweVZ/K2v7kSczy3IkHcZHg2bNiAX44AcXNz0+i+5sDR0ZEZamVFBXZQfzXabz2IioqCoY2NDatjBft4kKt+fqtWrTpgZwd90lwKZdjQ1VxCP6S5hCWxcOFCvmQyc+bMAaG008oEZ5lcpbGxUTqUIu4L1NTU8KW3Gfr+J73wz9UExNMDBdLRU3cn7bJrmN0+76VrT348deffg/4aHnjdq+rLMNjH1nbHdlYXJzDsHQ6yCnQ+m/eZt48H9qHj5uGKO67f8NVyp9+Jjz5sPj/yb7s9FvvEnBAXS6EoL+VlxfwfO4KQQJpLWBLLly/nSyYDmmullVS0Dew0NzdjhxlnXl4edoKCgqAd+r/P2gvAWE9JSeHmo+Nixdra2t3dHYd1dXU4AcRaqrnWWrAP03B36fPs7e1tamqqqKjIyMgIDg52cXE5ePCgjY3NtGnT8JlfvHhROp9DPD1QTM/CBQsO2NmxC7d4IZZdu125ciV06mprsbJp0yZHR0d8sdJSUwP8/WOio9nX3mIdYN+VcNXPD3eEV3l0V3Mnj+WXvVEoEyF0NZfQj3Gae2/3Sm/rXyQ5bOU3yNOSHudt/fPAP3/EbyAI41m/fj1XCQ0NBSEICwsbGBjgNhkIaO6lS5c6OzuHbEMH9oetoNFKNbe1tZXN6QEvkcCOgJrLKnAQNzc3qebOnDmTTWaPxT9XExBPDxTTc9LZOSM9Xaq5YxTSXApl2JDmEvoxVHOv/OEf+JLx/OWH5y//8iNfJQiD2blzJ18yGSaaRoGaO9bwz9UEuHODk33OwMOf1BPx7GiWiD46Rhmd5v5px8/EIkWpeTTQKxYVH/oIGqEfQzWXICYCdnZ2fMlkeLWcSPDP1QS4cwNprhqy5cIcsUhRaqoqy8Si4kNXcwn9GK258XW9L3/ii8YStmYGXyIIA3BycuJLJvNyAsM/VxPgzg2kuWrI+bC9YtGU0Jf9TuSE3gwWi4oPXc0l9DOC5rZlJ0uHjoHpu68kQqRF4NLaBVyFseNf/5YvEcRoOXPmDF8iDIM7N5DmqiHBiW5i0ZSQ5k7kfLN9m1hUfOhqrumciyz/aE/kz1YH/u/tt/ddK4wu6up68qPpufagZd7xRDgs5BufbP5Rx4sRNJdjy8Xoza5REK6OLpsZ4ndj39fQGehsOzL1f2HRaeb70PpsWfb2Hq9+MuuVKkIluLu78yXCMLhzA2muGhKXEygWTQlo7p49e4Y+ItnTs0VLRHh4cFAQdJYtWwat64ULnKSWlJSI5qrR3VlCrOMm6ZA018DAz00sKj6kucby6Lsf/mFDyL9/cycsq01003FIcGbr7/ZGzXG8zz+zsUGf5npb/4IvvXr1xUHf+tYeaQV09tmTRyc/+x2rXFq74Nnj1x97Z1dzH2u62QSCGB0BAQF8iTAM7txAmquG5FcliUVTAprL9BTazIwMZqVJiYmisPr5+iZI7pi2ds2azo4O5rJMZ8GP2XHEjpo1t7+vu7GhtqqytCA/Jy0tOfZeTHDQjcuXvRwdj9jYfD19+nT8MQKzZn0q7q6G0JsW9NPW990HuyJE15xoaep//vdrAvlnbw70aa7IjK9Pz95+Yfa2CzNt3vy/46oHCa+0Oot5RZpLjBlhYWF8iTAM7txgrOZaf+ACGbYuFjErFvvp2apnk3ROdeUj7IgR5+uJeHZUQ2pbisSiKcE3LVxyd5e6LEbUXJRUprmsiENpcf369dIK11Gz5lJGDF3N1cPeawWiUE7wgO/yyzAN4zTXvNzZ+BlfIvTibf0LyIuBXta+k2FDXBgb3v7q05qIa2wYufnP5cFebBi7eyXbq8DbmdWTj2zJOn+YDdNP7Utz3s2GOReP1EYM/6W1MTExfIkwDO7cYKzm5ud2l5X0D2iNMyGuAS3zkynnoYMtDCNvV93wL3zY/xMEZ+K+OAc70h2x0tf7Fz3aKq0HXSvCjpd7pjhTf8SzoxrS0dMgFk3JsO/NzcnOFouQvNxc1pfeXRivAXMR39tQUlyMHdJcip7Q1Vw5joaWihJpKeEXYwKympt8bAdfMjfew70pgtDDi/5ulSR2x/DfdpaQMPS/DsaUJ+8U/tmYD+7cYKzmgm5uXh98/nSqi1MiWumNq4VYX/2lPytywgp93AU1FytsRzYTJkCKC3uxLt0dO5qeH6FtavgOK6S5Bubhoy6xaEqG1dyxDmkuRU9Ic+X42epAUR8tIkdCSvjFmICs5oZ/PZ8vmRvQ3KdPn9bX11+7du13v3vz1l5CDlEHDc+smTMhYt3wLJw3TyxK831Pu1gcdfjFa8nMzORL5oa/de34wj8b88GdG4zV3Pzc7uNH7pcW95WXPsQKGqfUVm8GlUC7Y+stHCYnNkELu0CLV4K5HQ/sicJKxK1KtpWL1HohG1bfGCDNfXchzaVMtNCbFuQoafs2OLNVlMgJntlH47vG52puR346XzI3/rPekw6tzPrVpopEdEHDAz9ebOfNnXPcwX7H1i2orVj/avVKn0sXoVNblMemfdfVyvbKiL8HFehPsbaG1vmoA25iky+dOw196JRnp0OnOCP1YUu99AkYFbmrucXFxXzJ3Gi037JbWlo69BbC4WBKKu2LRe5bfxlz5szhSxL4Z2M+uHODsZpr6RHPjhQKRQGhq7lygOaiOHY8fvEPG246hk3c9zDcye1Y5JIsrfCLMQFZzRX5/sljaF88Hzy3ZDq/bSR2/OvfpgZ4plzVdzeo4OBgvkS8jaiDhsdKYqXQhvj7Ql5otRUqbIgTcM7F0yfRWY8dPiStsw7oMrTnnI+zR5Eex5TUhl/jF6+loaGBL5kbcM0zZ86cO3cOl6mRmKurq6tUSaWwmdbW1tIhtFjBDlTwW4JPnDhRU1MDw5SUFE9PT/ZY/LMxH+ys8Nvf/vb9998nzaVQKAoIXc2Vo0ynuXJxDC392erAyfuiw3Laxa1mz75rhf9sEwaPaHejqPMxv5ULvxgT0Ke53HtnQXP/8uKHV7qbKtRlp+Xcug4dbPGOCidmf4gtVu5dPI51HPa26HOUx4+HNJrQg6iDhgfFlHXAblPuRkGnpjD3h76ueXPnsPckwIQVS78sSEuCTnV+Nlb8vTygfdbdFhkSmBwTiQdBzU29F12Vl4X7njp2lD2QieEXr6W9vZ0vDUd1dbWXl9fRo0fnz5+PBskxZcqU2bNnL1q0aM2aNZs2bdqyZcv27dt37Nixe/duMOnS0tLGxkaY1qilqakJ+tCePn26WUtLS8vq1auhbW1tzcjISE1NhQltbW1WWs2FJzl16tSOjg4YQnv+/PkrV66wIewYExNzRQsT3JUrV8KmvLy8/DEjM/MB5sMPPxx6xKWOogsqOJO3/Y1cmjurxHMnhUKxiJDmyjGi5g6be8Xdh4KKP3GIw691wPy39SFgwzZeWYeDS1i2+eR+5Za+9EzK3GMJH+4e+nYJaaz3x5yNqhKPb2D4xZiAPs3lwKu5AF7NBc199fZ9xNgtw356+dJ1xSzoxHudve95mk3DrQh9/mwUiC6o1Mi9aeHhw4d8ydywq7Mcmrev5rL3HsAmkFqcA9YLmhsdHc02YYsdBK/mckWsBAUF8c/GfLCzgpX2HvJ0NZflcpRjW3etWKdQKBM/9KYFOdibFiwx/GJMwAjNBU99/t1T6MScd7ps8yXTXLx2i32cCR583+MUDB91d0IbYr99/6RfcZpLjAJRBxUcfvFaBgcH+ZK5kaqn4XDOOmr4Z2M+uHPD+GhuXe0TsWhU+vteQtvc9EzcZFTEs6M0k7f9jVikUCgTP3Q1Vw7SXGQEzb085Zd8SZ5v+w09SScd3caXCAMQXVCpyb5wmF+8YSQnJ/MlI+HFc3zhn4354M4N+jXXbncktEsWXMYhd7sDw7NxTaBYNORobE531wtoA/zypcWQGyUVZQ9xuHZZgCEHFM+O0pDmUigWGrqaKwdpLjKC5o4Fxdfc+BJhGKIOKjVyb1oYkZ07d/IlQgt3bhhRc4853B/Q3S8MPRKclbuJmNQvQTfnTHdjxcwH7biL+/n0Sxcy8EZgsGnrhpvSg1jrvjkCc92vADtQT4xvrK15Iqe57DmQ5lIoag5dzZWDNBcxVHPN8lbalONj/pUTykbUQQWHX7xhzJ8/5vd7tlC4c8OImjugM9HAgCKw1SULLm9eH4xCuWvbbTDaPdvvSP0SRBY1t6frBRPZzz/zcnFKBBO1WRc0oBPlrIwOPDLMbG9/LtVcFixmpLWxp4F17IDmSofQHj8yJOV6Ip4dpSHNpVAsNKS5cnCae79o5Hvo/vX0Qw7+KdD55SLnv/vMUZzw8VZvaN9beV7cJGb+gevQJhS3wWHFrZAj/qliEcMvxgQM1Vzk+oIP+JJhRG9fwpcI4xFdUKkZ9dXcjz76iC8RWrhzg37NHTEl2i99sKDgZ/4Q8UxJmkuhWGjKy8b8ZuoWCtNctExsrda5QesZVciK0q3bXGOkRTHSydj+ZtlZNtx64fXu4Zn1bP7d/GY2WdqBHVFz7f2Sod828IP0QfnFmIBxmstoTIwsC/UZMZURAfyehAmIOqjUyN03l0P8RJoVfcmIDNy5wUTNtbiIZ0dp1Km5/Y/7FRlxpRQFh67myiHV3Iq2x0xevzx6EzsRWQ24lXmqVHP/fY0rk07QYuzgLmCxnY9fQOfvPnPEfQ/4JOGOeAV3xk4/nI+aO2//NXZt+CuXcKaz0qu5UsftmgiaS7wTpCLIb7N8Im7eYKsz8CNofX19XIU0Vw7u3KByzQ0LDZEOFay59W2lYhET31DW+mxAeRFXSlFw6CNocqDmbjobiRJpcy6K01zfeyVMcLEFzQV//XDjJU46pcFNbQM/dEk0d9PpCOhcDM9DwcX3NuBk6dXc9Kruv5ZcKkbNZcPLd4vZo/CLMQHSXEtCPZpr4JsW6urquApprhzcuUHlmsu9dUHBmns62FYsYkhzKQoIXc2Vw5CPoIWm1egxWqNy9X7ZLxc5i/XRhV+MCZDmWhLq0VwDF1hYWMhVDNFc/iZelsP333/PL8ZguHMDaa50qGDN1bM00lyKAkKaK4chmjthwy/GBEhzLQljLdCyGPFqrih56enpXMXsmltSUsKX3mbYCfDE+NLb3Lp1i6uEhoZyFRHxJ2A43LmBNFc61OOClp5hl/ax7X8dJM2lKCL0pgU5SHORCa25J4478iV1ox7N1RRm8JuHU9jY2FiuIs4R4eVRx9atW6ENCgqC1tbWFtolS5Zwc+D4BQUF2BE3YaezsxM7tbW1bzZrNK2trdjp6elh3xUsR01NDV8yt+a2ND1XT7jlq0dzB7WrE/P7rf83aS5FARmfq7n83+Ixg39gEyDNRUhzLQlla+7CBfPWr1mNWTLrkw0SnJyc+Nlarly5wlVGobmwS0REBHZQVfft2wedw4cPS6ehBLM50g5OYB3OUHfv3i0d4jTQXOgwIUaampqws3TpUmmdYUbNVXkmTZokHSpbc8WA4w7S1VyKIjI+V3P5v8WGwf2F9/f3lw6HhX9gEyDNRUhzLYlx09zp0/80bB+HHh6XwLegs3Xr5pcvX0ILkc4ZHSO+aUEEDJirWBmvueDQNjY2Gp3ILly4kG2Co3l7e2M/JCQEKw0NDbdu3YLO8ePH4+Pjw8PDPTw8cBPORM2FYW5uLnZAow8cOJCfn19QUADD5ORk1NxNmzbhLghUzpw5Ax0fHx9pnUGaa67MnDFDOhyF5mp6esY/4tMwJSNq7nR7W9b/qwV/EicMG5jZ8t1DsY6pftglFofNZ8f2n7sXFlGS3ap79Ek7NzxorBRnchFXSlFwxudqrvSihpUENsQOnErgrIR/rrHI1JZNW7JkCV7RyMzM7Orqwk0xMTE4gX9g42EHMZfm4mfUGnu/Z5UNp8KlWzedjcys6THXR9kwb6/JJCaW5ra3t0uHpLkcZtdcprDQgTg5HYX+o0cD0O/t7WWbnj17Jp35Svs2WU5/TWcUH0ETvwzCkD8T+EeHQ3yz7ASENNdcWbBgvnR44voWcY7+MPV8ffYariPNsEXpVttvvhHrXMSnYUoM11zogGgG56RAC/33bddB5/d7bVq1AmoXfAU7OBk717ISIX/75WyYv+riiU3eZ2F3qEMFJvzh4Hbof+XuItozVLAImhtWkI6aO/WQ7ZXUe9xMuYgrpSg446a5M2fOXLhwIb7fzM3Nbeg/Zy2sg31Oc7mtrI9DwMXFxdHREfsac1zNnTRpEh7NXJpr634PFJZpbnBK1UHfpJSyjpqup11azYVhTq1m/oHr7Pa6podflQlMLM0NDw+XDklzOYy1QENYtmwJOi5qq7RFuAobjqnmGng110qQ2ilTpnAVEekfGsuCNNdcWbF8uVg0KlWVlXguAXq6u1FVoX2QliaVV66DfdcLF3BHaRE0Fyu6o76eYKWdD50Af3/xaYwu1tv+86Axmrv3hheqJ2oudtKbqrDTqr3OejjUn+2IquocGQRh83EmaC7O2RXgiRNwaHP5HNsX54DmQh81FwLKy46vP+J6KQqOnjctLFlitq9f9fPzG/rvUaPx9fXVSC7NYr+qqor1UXPZBDaN6wMtLS0VFRUFBQVFRUVsK//AxgOa++GHH74y39XcLu0NbkFz2fXazJoe7EAFb77LIu47uvCrMoGJpblLly6VDklzOcZCc4GHDx9u3Lh+xoxpVVWV+IULoLDh4be/+GIR9tPSUuvqajs7O3Ho6+uzb9+eMdXcYT+CJnL//n2uAv/a5iqMvOrk6Ozr1+6fa2ypq22sqmmoqG4or6ovs6DY+6ybvO1vZu791RdH39/qOtc5aHtg4sXEwtvF9Zn8agXE04Oa8/XXm8QiJCTR/bDv2pUnfv/Jrp+LH9uSZujcVl+GJzPWt9nytfiq4SZoz188w3YRJ+C+bOv9pLvSaVgXn4YpMURzUU9RcyHrPU5LtTUkN5XpL9sL3bThSS90ll9wkr7zoVV3NZftJd2R7Y5F0FxomebKzRcjvqwUBUfP1VzwSL40WqR6yhEZGcmXTIB/YBMwo+aOf/jFmMAImuv7ya+9rX9hYq788R/448pg9fbFOaM0d+HC+XxJy9y5sw4e3M9XLZMx0lz9mF1n5TD2TQvcbwuyZs0aroJn9KisgPbeRqzwf1csh2Gv5j5/8X1jV6W931ewTH6bBPH0oObssP1GLBqVqKioiPBwvNo6dDM4ySXbobdWazvr169nF2uhra2pwWFnRwd2WKx0b1qQXtPlJpQUF4tPY3Qx+0fQDLFPAwOHWudxSqwbHnG9FAXnpPPwH1A2L/zf4rcpKyvjS6OFf2ATIM1Fhtdcn6n/gy+Zg8A/8++kFEF3mTRp0vvvv3/0iD2/WQAkTKPpgc6ePTuhf/9+XH9/X1DQDen/ZGf/nx2vQUL8/a9iBdv58+dCx8vLA7fGxt7THX5iYZQFWhyjeNOCyOnTp7nKpQgHrsL/XTGSIf8YFfhpA1MYVnOl6DFd8fSg5jgePSIWjYq1tTX8JkydOpUT1jEKWq/4NEyJGTV3QkVcKUXB0XM1V+WQ5iK85qY67+Iq7wTQ3GPHjhlyNdfPz4eJrKenR2Dgjbi4IUn19vbECbhp27YtTGqxXl5ehsOXL19Cu2rVctgXwiaYCG8oeuF3lkE9mjvqBSYmJvIlAf6nbyQgHDdv3nRycoKOv78/tNCHOr55y8PDY9WqVVFRUTgTcHd3xw/bjtqPGaS55srZs6fFolERTXQcIj4NU0KaS1FASHPlIM1FeM3lePkTXzEL/nPe40vDYYjmAtnZWYcPH3r19oVbZqvS4quhi767pMO1a1dxe42z5uJ3aPE7y2C6BU5kzHI11xD418BI0FZRYaED/x6DNjs7G4ZeXl5sq0YrvgBornRHUyDNNVcue3uKRfXk99vM/KaFCRVxvRQFR+4jaM+fP+dLKkO/5s4/cJ2rtA38YNRnyH65yBnaabY+4ibTwy/GBN7SXG/rX0iHe32T9/olSyvAqYVT7Kf8miuOEQZq7sQEveTOnTvYwfvkrV27likL8yQNaa4WC9LczMxMe3t7ZrR4s9vo6GhoKyoqXFxcMjIycFNAQABp7gRMYOA1sajUJOTdFD9/NuJH0Gz93MWiNEl1pWJxFJG+r/deZQHrr3FzvpQQ9S82yxu/7YurLoLKHKe9v9290TXujngQacSfAEXBkbua292twLOkUXCaiwrLRBY1lxXbHw05LiSlrIObifW4wlbrzZ7Yx7suQMIz6+2uJK46fgv6YL1sR6xA/1Z6LXTKWh/hfKjALjgHrBo6VuvcoJ27LwAfi4VfjAnou5q72TVys2uUtLLjX/9WOswK9c8I8rm0dsGRqf/Laeb7bAL0ocMmY+dpf69095c/jrwMS9dcqcgOq7lTp061trbWGKO577///qQPPtCvuT/9NHQR/tq1AFYpKyuF9ty5s5s2DX2fAn4m78SJYzNmTHv58iX04en19/ez+VJwF9j33LkzLS3NrM4uewcF3WDTEDgyHDYzM2P//r2wI1QcHIbeZp2QEM/miJj+pgWr4T6UJsJegnFm2O/vNQrSXHMlMuK2WFRkJg/3zReG3FDsfdt1rToHxXadx6mirmbuJgnQ3irMkKpq7aPuL844/JX2vmDx1cXQWeB8AOf/4cBW8cNq7FCtEs2VTvsr7S0dsBOQkcDtLkZcL0XBkfsIWmVlJV9SGVLNRcXE+9qiX4LmQtHucgJugrQ+fM5k9PDVFLZvXfd3607eYZMXHQqUHhM0d7dH3Ow9/hUdT2DoFp4H09hhQXNxJlTCHtS+t/I87rvfOx52hHpsQQt7AtLwizGBN5o7+OihpD7Et98N1rcOfbqLwWluwuXzL//yFyg+e/KIbZUKbor/JehnBPtCpDsaiKVrrkbv1VwgLy9Po73+x+8sA2ruhx9+OKIFurg48yWdmPr4XGHD8vIy/EoItlUKq3h7e0q37txpy/oI2wodUGdWLy0t4bayTSKWcjX3HUKaa66kpSaJRUXmqP96sYgxRHO54Nc6hBdnQXskzP9r77NYz26rY3NAc6G9nHJv0s4NaKugubhJdFyu7p8Rj50NnmegDc1/gFuLu1uwA5qbWDPCVWRxpRQFR+5qbkpKCl9SGfrftDDBwy/GBGSv5k7f6DJ7+4XZ2y7MtDkjrTOLhRY0Vzq8se9r1sfJoLkDnW0wLIi6KTmGoShAcw2E31kGYy92DgwMSIdgmQ0NDVwFO3hNd1i6u7tbW1unaz+rx2+TwC709vS89U+jxsahR3z69Km0OCymX80Vaequ5kuKhjTXwBQU5IhFRaa6uUAsYvRr7iii5zt+xzPiSikKjpzmRkRE8CWVQZqLvNZc7lJudErBUbcQFukmM/Lg9D6+9DbGau6yZa+/8mRwcPDtLW/BXVPUf4lx1PAmqxd+ZxlMtMDg4CDpsKSkWDrUD7fvWDAWV3NjsofeUKEeSHMNTHVVuVhUT8x+39wJFXG9FAVH7iNowcHBfEllkOYirzX3xsKhr4YbZ7hPvEmZNGlSZGSkfs2dMWPadO2NEdzcXKGtr6/D4YsXL1BzcYiTWae4uGi69iu+sIJzpmtvKAbt+fNn4+Pv45F1jzNKeJPVC7+zDCZq7gRnLDTXevt/5kuKhjTXwLS1NYlFNaSnrxk/fwamS5pLUUDkruZ6eXnxJZVBmou81tyA2f/77fp44DX553xJB2iulZXVnj07+Q0S2HtAmbByV3MvXrwAwcqTJ0/YZAxs+u6777CP99BlW/HIPxrwIblxRj2aa64F6tE+RaJnveLpQc15NNArFtWQoATXQd3n0khzKQqI3EfQXFxc+JLKIM1FXmtuZ0Hm2/XxIG7fV3zpbfRfzR07pB+imlCY3QInFBcvO+QVRGI8bT8trEs3MJUtBS09tY+e9vFHVB+kuRQ9KalLlw5JcykKiNzV3F27JsR3Xb1DDNTc9MouvNfBwoM3tl6IgU5KeSe0vvdKcMLp0Gy8OQO7JcLqE7ehPROavc11aH5aeVeX7qZgDv5vbtFgdyUR2uuJFdJ9DQy/GBOQ/QjanRP7XVfM4orcnRY4vn/yGDv7J/3qrQ1v337BcN6V5k5Yxlpz8br4iRPHsHPv3l325o3U1JTo6Cgctre3SXYyG2NxNVdtkOZS9MQj4rB0SJpLUUDkNHf9+vV8SWUYqLkgoJHZjdBm1vR85RKOpguBId5HjN1lDCf/05JTsAkrv1l2ljsa28Q9BOTf17iKm+TCL8YEZDX31MIpryReC52WknxoW8uLpLdTEOUVK3XZaUV3b6PdQi6tXSDOHBHSXI6xtsCcnGwPD/eUlNffCWJjs2nu3KF/6syaNeOVToLd3Fwle5iTsXhvruHwb5d+14zuPTOkuRQ92XjmE+mQNJeigMh9BG3+/Pl8SWUYqLl4NXfj6Qgc2l1OwA5+fwTWk0vbod3hHrvq+K0r94pb+p+z3Tlz9b9f5haeh/2IrAY2B2Lrds85MEM6WU/4xZjAG831mfY/JPUh8FsesM+EFRLrflLTWMfqb3YQgK0nZg//4TY9nz9jkOZyjKnmfvvtE/BacFnQ3Llau32lU9tbt0KhPXLkcHR0FH73xFgw0TS3tbWVL40jpLkUs+eTPb+UDtt7OxQZceEUBUfuaq6B3xakYAzU3HGL4Zdyu8ZIczmY1ELffsqvobN/0q+gvb5no/TNDExz2TcAs72kRxgdpLkcY6q5+unvH/N3vr7bNy3g99V5enpKv5K3pKQE2pMnT7KKflpaWvjSaCHNpZg9w34jGoVi0SHNlWOiaa5R4RdjArKaO6Zc/sN/40vDQZrL8Q4tcByw3bb50rkzmN0LZ3iNL/jNzM3NzdDW1dVBx8fHBytOTk7NWsBily9f3qoFNrW1tUFbXl7e3t6emZnZ0dExY8aMkJCQzs5O2BQREdHV1dXd3Z2QkNDT09PY2AgtPopG+1XPrIX5wcHBDQ0NKLg4Z3Sa+wfb/8qXdIinB4ri09pdIx2S5lKUFznN/fjjj/mSyiDNRXjN9Zn2z1zF7BTfcOdLMpDmcihbcyfC1VwPDw/sMOPUvH01d+HChayOnalTp2p039us0b3VYe3atew9D2xyWVmZVHNZHzQ3MjIS59TU1EB/5syZhmiulXC5Yv6h/8lVGOLpgaL4lNRlSIekuRTlRU5z4S8wX1IZpLkIr7lI6IoxuaNWyvEdfEkvfX29HR3tEzP8cx0X3qEFjgMT7b25hsAU1nAM3MUQzRXZePYTvqRDPD2oPEGB12fN+pT9e4MxY8aMlStXbN26Zc+eXfaHDh4/7nT+3Bl3N1eMt7enn9+V4KAbd+6E3Y2Jir9/LzU1KTcns7gov7ysuKamoqmxrquzta+3ayLcmjex4JZ0SJpLUV6G/QialXAJQIXsv5Yv6qNF5GerA/nFmMDwmvtK+4m0HPfh77o8OiI3/5kvEUZCmjt28JppGNHR0XxpJEbcBS8Dj05zjwZs4Es6xNMDRfEJTnSTDklzKcqL3NVcAogtHLpDggWlruf7+cfj+WWYhqzmEhMQ9Wju+C+wb4IxOs0NTpJ9R5B4eqAoPva+a6VD0lyK8kKaOyIvf/rpv2+8ueT0my9umGhxDCtdfjaFf95mgjTXkniHFjgOvNuruYrhXm4wX9Iinh4oig/ntaS5FOWFNHfU5NT2/mx14OT90aHZbaJ6mj37rhX+2iYMhDulvIt/KmMJaa4lIdVcxYdfPGEYcvcUE08PFMWHNJei+JDmjh2ax4P59X03UhsOBxWudU17b/tt0GKWf9kcNmlXxB8OxHx27P7GS+lnI8phZlrFhDt3k+ZaEqILKjV0NXfUgMokFt7mq6S5CkrfQEdrV011S0FuRUJ0ZoD77QOngr857Ltmm+vcz4/8G/wCsHhGOEh3JM2lKC/DfgSNIBikuZaEqINKDWmu2XnypLf/UWdPX0uHph4kqa61pLo5r7whu6gmLb8yCc4WMOHho66+h+1Dc3rqYE5TR2V9W2lNS2FlY25ZfVZx7YP8qiRQq+yK+PEJPLHC6hR4hqV1GfBUK5vyaprza1uL4Mk3tpe3dFbDk4Sn2tXb2NPXDM8cFvjwUffjJxrxXEgZJM2lKDF0NZfQD2muJSHqoILDL54wDfH0QFFbSHMpygtpLqEf0lyCUAXi6YGitpDmUpQX0lxCP6S5BKEKxNMDRW0hzaUoL6S5hH5IcwlCFYinB4raQppLUV7oI2iEfkhzCUIViKeHEbNtY+rAw58sMeJaKIOkuRQlhq7mEvohzSUIVSCeHkYMaa7CQppLUV5Icwn9kOYShCoQTw8jhjRXYSHNpSgvd27d5P/YEYQE0lyCUAXi6WHEkOYqLKS5FOWFruYS+iHNJQgL5tmzZ3xJBvH0MGJIc/VE09Mz/hGfhlEhzaUoL/QRNDkcDh9UfPg1DwdpLkFYMBqNhi/JIJ4eRgxprp6IDjoOEZ+GUSHNpSgvdDVXjrbm2iePehSc1auW8WseDtJcgrBgKisr+ZIM4ulhxIyz5lZVDIjF0UVci9nD1NNKy7AdaYYtSrfafvONWOciPg2jQppLUV5Ic+UgzUVIcwnCgklMTORLMoinhxGjX3OtP3CBtr/vpbTY2vy9ONOQ4NEgfb1vHXB0Eddi9lRVVqK5Aj3d3aiq0D5IS5PKK9fBvuuFC5z1ouZiRXfU1xOstPOhE+DvLz4NCkXloTctyEGai5DmEoQF4+DgwJdkEE8PI8YQzRU7q7/0x37QtSLsbLcJhbYwrwdaDM53OhzH+pD83G5uwpzpbtiXFqV9uWRXxI91cnKzQEBjY++ij3Z0tmE7XNphU2dXB6arq7Oreyjd3V1D6enu6em20l3Nldotk2AczpkzR3yNKBSVh67mykGai5DmEoQFM23aNL4kg3h6GDH6NXf+px59vS93bL11YE8UDOtrv0X7PHrw3oBEcz+Zch76PV0vsjI60FBDbpR0tD3v6vxhQPJGhZKiPmhDg0u1xUfsUZYsuIxHY2pbXvqQbZWLuBaz56SzMyop+mhKcjITU1FVO9qHTJcVQVjZVqxbvX01V3oQTPidOxqT37RAoSgvdDVXDtJchDSXICwYMCG+JIN4ehgx+jV3xKDmvpOIazF7rK2t4Yc/depUZqJjGlRe8WlQKCoPXc2VgzQXIc0lCAumurqaL8kgnh70ZPv2bYMma+47jLgis0c00XGI+DQoFJWHNFcO/Zrr5HgY2rCbN8RNcpk+/U8YcRNL7N0IaA8e2CtuGnFfY0OaSxCqwMHBwcrK6vTp08HBwfHx8Tk5OWVlZXV1dZ2dnX19fU+fPsVp4ulBT/D/mK9ZFiAapEVEXBGFQlFk6E0LchiiufPnzYH2mJPDkiWLoLN588bHA90oo9cCfKBz9Mgh6AcHBeBeMA13gRYCE7B9orXYnq4WaOPvR+MciOuFMzNmTMO+3f7d0J44fhSHy5d9AVvxCDDEabAVKjY2G7T9Izt3bMXJw4Y0lyCIN4inBz0pKsobpKu5FAplwmdMr+Zq3hH88xgVhmhucmIsq7S1DM2PvRtx+LAduKa72zkYQrtx4zo2BzSXSS3rQHsrLIhpLgzPnXXB+X6+XpDa6lIctrfWQbv0y8Uw7UFawqxZMxYvXogHwWm4O6ajvUE6FEOaSxDEG8TTw4gxRXPxRmM1VY/FTSzdXS/EolkiroVCoSgyY3o1l9fP8YJ/HqNCv+aip6LmMmeF3L4VjEPUXNzK9gLNLSvJwwlYxxY1t6ggE+tMc6VH5nbBYUNdBVdkjyXdd9iQ5hIE8Qbx9DBijNVcvBlC5oN2X68cVNhd225DpHP27YiAduuGmwPaO4jd8C+8fbPc9Uwam7Bj6y12KPv9MdAe2hctPYIhEddCoVAUmXG+mjv0YVCNJjs7Wzo0hKSkJK5y9epVroIY/sFi/ejXXAOjXzRHF3MdkzSXIIg3iKeHETMKzYWUFPYO6K7UguOmp7aJM0FtB7Say3Zkm677FbAK3jssJLBEPIL+iGuhUCiKzJhqrq2trbe3N7rs5cuXY2JiOM1tbGysqqqKiopihmptbQ0z8eMNPj4+Ond9rblFRUV5eXk4DTS3s7MTisuWLYMh7u7l5RUXF8c/D2OYNGkSirJZNHcihzSXIIg3iKeHETMKzR3Q3unW70qetAKpKHtzs9s5092gbWr4brtNaOTtqpAbJTDNZl3QgO6+ubhjX+9fpAc3KuJaKBSKIjOmb1oAzQX79PT0RLtFedVINJdj7dq19fX1Gu3MpUuX+vn5lZeX4yZ2NRc0d9GiRRrt1dwlS5bgZJgJna1bt+Ic/nkYA2ouQJqLkOYShCoQTw8jxljNnTgR10KhUBSZsb6a29raiurJOtK+nZ0dtCUlJWyTlObmZr5kAHPmzOGfx6ggzUVIcwlCFYinhxFDmkuhUCZ4xvRqbmZmJi+h4wL/PEaFgZor/aRXfV25OIHlzOkTYpFFfMdtn6Zt2GmJCXe5+dDv721nn0JzcTkm7iiGNJcgiDeIp4cRQ5pLoVAmeE46O/F/7MwHr5/jBf88RoWBmos3smU39goLDTx65BB0NN2tO3ZsO2C3B/rLl30Brai5UFz65WJ2gwVWZMIqnbxy5TLsrPtqlbSOd8nFybfCAj0uuUq36glpLkEQbxBPDyOGNJdCoUzwjOmbFiwaozQXMmvWDHRN6IDRguZC/35cFBTXr1vj5+vFNLeoMIvtvnr1ck5qYRoE9Fd6NTc7KwUOi338Pgicv2fPjg3r17JhZESo9FD6Q5pLEMQbxNPDiCHNpVAoEzxj+qYFi8ZAzcWLr2iW+M6ByvLCGTOmoaQmxMdAJS0lnn2ZGbdvUUEmdtIfJGJn48Z1OPnQwX3Qzp37KdahvXLZXaqwqclx7Dhca0hIcwmCeIN4ehgxpLkUCmWCh67mymGg5lpuSHMJgniDeHoYMaS5FAplgqe8rJj/Y0doIc1FSHMJQhWIpwcKhUKx9IzpR9AsGtJchDSXIFSBeHqgUCgUSw+9aUEO0lyENJcgVIF4eqBQKBRLD30ETQ7SXIQ0lyBUwY8//gB/FCDYEYcb1q9hw66udunWgYH+J08eSffq7e2G9sWL59B+tXZlW1sL27rZZgM7ZlVVOavv3WNbXJTPhoft7bKyMtjw+LGjck9s7IZOjg5smJOdaX9oPxuWlBTs2W3LhjU1lWyvrzetY/X29tY1q5dD54cfBqHt69NIH+Lp0ycPH/axIaSzs40NN25Y29hQz4bbt22We55jN7xyxZMNIyPvuF08z4b37989fcqZDVNTk9heDocPsnphQd7+fTvZsKKi9JtvtrBhfX2t3EPj8Nmzb/VsHYth/P27bHjx4jlYNRteuexx82YQG14L8GN7+fpeZvU7t0M9Ll1kw3t3o8+ddWHDpKR4uYeeIMOSkkI2PHRwX05OFhvCfxHwQrPh6dPObK+7d6NY3dPT7fbtUDa86ucTeCOADYODrss99BgN+T92hBbSXIQ0lyAIgiAIQlHk5mQrPvyah4M0lyAIgiAIglAgpLkEQRAEQRCEAiHNJQiCIAiCIBTI/w8fQuMrPWBFQAAAAABJRU5ErkJggg==>
+Service-to-service calls inside the network use the same mechanism: Reservation, Review and Occupancy reach the Library Service at LIBRARY_GRPC_ADDR=library:9082, Reservation and Review reach the User Service at USER_URL=http://user:8081, and the data stores are reached at postgres:5432, mongo:27017 and rabbitmq:5672. Next.js reaches the gateway at GATEWAY_URL=http://gateway:8080. A health check on every container (GET /healthz, grpc.health.v1 for Library) lets Compose report and restart unhealthy services.
+
+# **System Architecture (C4 Model)**
+
+The architecture is described with the C4 model at four levels of detail: the system in its context, its containers, the components inside one container, and the code of that container. Diagram sources are Mermaid files in docs/diagrams/.
+
+### **Level 1: System Context**
+
+![Figure 1: C4 Level 1, System Context](diagrams/c4-1-context.png)
+*Figure 1: C4 Level 1, System Context*
+
+CU SeatFinder is used by customers (students and staff) and admins (library staff). It depends on two external systems the team does not control: CU SSO for identity (ADR-004) and the library turnstile systems for occupancy counts (ADR-005).
+
+### **Level 2: Containers**
+
+![Figure 2: C4 Level 2, Containers. Thick lines are gRPC; dotted lines are asynchronous events through RabbitMQ (ADR-007).](diagrams/c4-2-container.png)
+*Figure 2: C4 Level 2, Containers. Thick lines are gRPC; dotted lines are asynchronous events through RabbitMQ (ADR-007).*
+
+The Web App renders pages and sends every API call to the API Gateway (ADR-008), which routes REST calls to four services and translates library calls to gRPC. PostgreSQL holds one schema per service and MongoDB holds reviews only (ADR-006). The services find each other through Docker DNS (ADR-009).
+
+### **Level 3: Components of the Reservation Service**
+
+![Figure 3: C4 Level 3, components of the Reservation Service](diagrams/c4-3-component-reservation.png)
+*Figure 3: C4 Level 3, components of the Reservation Service*
+
+The Reservation Service is shown because it uses all three communication styles: it serves REST, calls the Library Service over gRPC and the User Service over REST, and publishes events to RabbitMQ. The No-show Sweeper runs on a one-minute timer and uses the reservations table as its outbox (ADR-007).
+
+### **Level 4: Code of the Reservation Service**
+
+![Figure 4: C4 Level 4, main Go types and functions of the Reservation Service](diagrams/c4-4-code-reservation.png)
+*Figure 4: C4 Level 4, main Go types and functions of the Reservation Service*
+
+quotaCheck and overlaps are pure functions, so the booking rules are unit-tested without a database.
+
+# **Sequence Diagrams**
+
+### **UC-00 Sign In**
+
+![Figure 5: Customer and admin sign-in through the API Gateway](diagrams/seq-login.png)
+*Figure 5: Customer and admin sign-in through the API Gateway*
+
+### **UC-02 Reserve Meeting Room (REST and gRPC)**
+
+![Figure 6: Creating and accepting a reservation](diagrams/seq-reserve-room.png)
+*Figure 6: Creating and accepting a reservation*
+
+The request passes the gateway's JWT check, the Reservation Service validates the room over gRPC and the penalty over REST, applies the quota rule, and relies on a row lock plus the EXCLUDE constraint so two concurrent requests cannot both get the slot.
+
+### **No-show Penalty (Message Broker)**
+
+![Figure 7: No-show detection and penalty through RabbitMQ](diagrams/seq-no-show.png)
+*Figure 7: No-show detection and penalty through RabbitMQ*
+
+Delivery is at-least-once: the sweeper only marks rows no_show after the broker confirms, and the User Service ignores duplicates because penalties are keyed by reservation_id (ADR-007).
+
+# **Quality, Testing and Risk**
+
+# **Load Test Plan**
+
+Load tests run with k6 against the whole system started by Docker Compose on one machine. Every request goes through the API Gateway, so the results include the gateway hop. Scripts are kept in loadtest/ in the repository. Two test types are run:
+
+| Test type | Goal | Load profile | Pass criteria |
+| :---- | :---- | :---- | :---- |
+| Load test | Show that the system meets its performance requirements at expected peak use | Ramp 0 to 50 virtual users in 1 min, hold 50 for 5 min, ramp down | p95 < 1 s for reservations, p95 < 500 ms for reads, error rate < 1% |
+| Stress test | Find the breaking point and which component fails first | Steps of 50, 100, 200 and 400 virtual users, 2 min each | Record the step where p95 > 1 s or error rate > 1%; the system recovers once load drops |
+
+**Traffic mix.** Each virtual user signs in with its own student ID, then sends:
+
+* 60% GET /api/occupancy (UC-01, UC-03);
+* 20% GET /api/libraries/{id} and GET /api/reviews?library_id= (REST-to-gRPC translation in the gateway, MongoDB reads);
+* 15% POST /api/reservations on a small set of rooms, so concurrent bookings compete for the same slots (UC-02);
+* 5% POST /api/reviews (UC-04).
+
+Responses 409 (slot taken) and 422 (quota reached) are expected outcomes and count as successes; only 5xx responses and timeouts count as errors. After each run, a SQL query confirms that no two active reservations overlap. Recorded metrics: requests per second, p50/p95/p99 latency per endpoint, error rate, and CPU and memory per container (docker stats).
+
+### **Results**
+
+| Test | Peak VUs | Requests/s | p95 reservation | p95 reads | Error rate | Result |
+| :---- | :---- | :---- | :---- | :---- | :---- | :---- |
+| Load test | 50 | TBD | TBD | TBD | TBD | TBD |
+| Stress test | TBD | TBD | TBD | TBD | TBD | TBD |
+
+**Interpretation** (to be completed after the runs): which component limits throughput first (gateway, a service, or PostgreSQL connections), and what that means for the design.
+
+# **Quality Attribute: Performance**
+
+Performance is the quality attribute the team measures. It is written as a quality attribute scenario so that the target can be tested:
+
+| Scenario part | Value |
+| :---- | :---- |
+| Source | 50 concurrent customers and admins |
+| Stimulus | Browse occupancy, open library pages, create and accept reservations, post reviews (traffic mix above) |
+| Artifact | API Gateway; Occupancy, Library, Reservation and Review services; PostgreSQL; MongoDB |
+| Environment | Normal operation; all containers on one machine with Docker Compose |
+| Response | Every request is answered and no meeting room is double-booked |
+| Response measure | p95 latency < 1 s for reservation calls and < 500 ms for reads; error rate < 1%; 0 overlapping reservations |
+
+**Tactics** already in the design:
+
+* Internal calls to the Library Service use gRPC over persistent HTTP/2 connections.
+* Every outbound call has a timeout (libraryclient.Timeout), so a slow dependency fails fast instead of holding the request.
+* PostgreSQL connection pooling (pgxpool) and indexes on the columns each query filters by; double booking is rejected by a database constraint rather than by extra round trips.
+* The gateway is stateless, so it and the busiest service can run as several replicas if the stress test shows they are the bottleneck.
+
+**Measurement.** The load test above is the measurement. If the baseline run misses a target, one tactic is applied (for example a second Reservation replica), the test is repeated, and both results are reported side by side.
+
+# **Risk Matrix**
+
+Each risk is rated for likelihood and impact from 1 (Low) to 3 (High); score = likelihood × impact. Scores 6 to 9 are high priority, 3 to 4 medium, and 1 to 2 low.
+
+| ID | Risk | Likelihood | Impact | Score | Mitigation |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| R1 | Turnstile data access is never granted, so occupancy stays simulated | High (3) | High (3) | 9 | Turnstile source behind an interface with a mock generator (ADR-005); the demo states the data is simulated; access requested early |
+| R2 | The API Gateway fails or becomes the bottleneck, so every request fails | Medium (2) | High (3) | 6 | Stateless gateway with health check and automatic restart (ADR-009); capacity measured in the stress test; can run several replicas |
+| R3 | CU SSO credentials are not issued in time, or SSO is down | High (3) | Medium (2) | 6 | Identity provider behind an interface; mock OIDC provider for the demo (ADR-004) |
+| R4 | Free-tier limits of Prisma Postgres or MongoDB Atlas (connections, storage) are hit during tests or the demo | Medium (2) | Medium (2) | 4 | Run load tests against local containers; cap connection pool sizes; daily backups |
+| R5 | The team is new to Go, and the gateway and load tests are still to be built before the presentation | Medium (2) | Medium (2) | 4 | Shared checklist with owners; build the gateway first; freeze features one week before the presentation |
+| R6 | Double booking under concurrent requests | Low (1) | High (3) | 3 | Row lock in a transaction plus an EXCLUDE constraint (ADR-006); checked by the overlap query after every load test |
+| R7 | No-show events pile up in the dead-letter queue, or RabbitMQ is down, so penalties are not applied | Low (1) | Medium (2) | 2 | Reservations table as outbox and an idempotent consumer (ADR-007); dead-letter queue watched in the RabbitMQ management UI |
+
+| Likelihood \ Impact | Low (1) | Medium (2) | High (3) |
+| :---- | :---- | :---- | :---- |
+| High (3) |  | R3 | R1 |
+| Medium (2) |  | R4, R5 | R2 |
+| Low (1) |  | R7 | R6 |
+
+# **Requirement Traceability**
+
+How each term-project requirement in the course syllabus is covered by this document and by the code.
+
+| Requirement | Where in this document | Where in the code | Status |
+| :---- | :---- | :---- | :---- |
+| 3 business use cases and authentication | UC-00 to UC-04 | frontend/; User, Occupancy, Reservation and Review services | Implemented |
+| C4 model (4 levels) and sequence diagrams | System Architecture (C4 Model); Sequence Diagrams | docs/diagrams/ | Documented |
+| At least one REST service | ADR-003; Step 3 | User, Occupancy, Reservation, Review | Implemented |
+| At least one gRPC service | ADR-003; Step 3 | Library Service (proto/library/v1/library.proto) | Implemented |
+| At least one message-broker service | ADR-007; Figure 7 | RabbitMQ: Reservation publishes, User consumes | Implemented |
+| API Gateway | ADR-008; Step 4 | backend/cmd/gateway | To do |
+| Service discovery | ADR-009; Step 4 | docker-compose.yml (Docker DNS, env vars, health checks) | Implemented |
+| RDBMS and NoSQL | ADR-006 | PostgreSQL (4 services), MongoDB (Review) | Implemented |
+| Load test, at least 2 types | Load Test Plan | loadtest/ (k6) | To do |
+| Risk matrix, at least 3 issues | Risk Matrix | None (document only) | Documented |
+| 1 measurable quality attribute | Quality Attribute: Performance | Load test results | To do |
+| Live demo of the front-end UI | UC-00 to UC-04 | frontend/ (Next.js) | Implemented |
