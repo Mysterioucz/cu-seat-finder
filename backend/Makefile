@@ -10,7 +10,7 @@ RABBITMQ_URL ?= amqp://seat:seat@localhost:5672/
 
 export DATABASE_URL MONGO_URL JWT_SECRET USER_URL LIBRARY_GRPC_ADDR POLL_INTERVAL RABBITMQ_URL
 
-.PHONY: db up down backup run test build proto
+.PHONY: db up down backup run test build proto loadtest stresstest nfr-security nfr-resilience
 
 db:
 	cd .. && docker compose up -d
@@ -26,6 +26,20 @@ down:
 # Dumps Postgres + MongoDB into ../backups/<timestamp>/ (daily-backup NFR).
 backup:
 	./scripts/backup.sh
+
+# NFR tests against the stack from `make up` (k6 runs from the grafana/k6 image
+# if not installed). Results: ../loadtest/results/. UI checks: `pnpm test:nfr` in frontend/.
+loadtest:
+	../loadtest/run.sh load
+
+stresstest:
+	../loadtest/run.sh stress
+
+nfr-security:
+	../loadtest/run.sh security
+
+nfr-resilience:
+	../loadtest/resilience.sh
 
 build:
 	go build ./...
