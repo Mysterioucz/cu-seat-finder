@@ -16,9 +16,14 @@ The `/api/reviews` API is unchanged, so the frontend needed no changes.
 ## Run
 
 ```bash
-cd backend && make db && make run     # Postgres :5432, MongoDB :27018
+cd backend && make up                 # everything in Docker: gateway :8080, Consul UI :8500
+# or: cd backend && make db && make run   (services on the host, no Consul)
 cd frontend && pnpm install && pnpm dev
 ```
+
+The frontend talks only to the API Gateway (`GATEWAY_URL`, default
+`http://localhost:8080`), which routes to the services it finds in Consul
+(ADR-008, ADR-009 in [docs/Proposal.md](docs/Proposal.md)).
 
 MongoDB is published on **27018** so it doesn't clash with a local `mongod`. If a
 local PostgreSQL already owns 5432, set `DATABASE_URL` in `backend/.env` and remap

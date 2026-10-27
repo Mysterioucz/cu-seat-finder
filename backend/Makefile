@@ -15,7 +15,8 @@ export DATABASE_URL MONGO_URL JWT_SECRET USER_URL LIBRARY_GRPC_ADDR POLL_INTERVA
 db:
 	cd .. && docker compose up -d
 
-# Infra + all 5 services in containers; they find each other by Compose DNS name (ADR-008).
+# Infra + gateway + all 5 services in containers; they find each other through Consul (ADR-009).
+# Only the gateway is published: http://localhost:8080. Registry UI: http://localhost:8500.
 up:
 	cd .. && docker compose --profile app up -d --build
 
@@ -38,9 +39,11 @@ test:
 proto:
 	buf generate ../proto --template buf.gen.yaml
 
-# Runs all 5 services concurrently (library is gRPC on :9082); Ctrl-C kills the whole group.
+# Runs the gateway (:8080) and all 5 services concurrently (library is gRPC on :9082);
+# Ctrl-C kills the whole group. No CONSUL_ADDR here: plain localhost addresses, no registry.
 run:
 	@trap 'kill 0' EXIT; \
+	PORT=8080 go run ./cmd/gateway & \
 	PORT=8081 go run ./cmd/user & \
 	GRPC_PORT=9082 go run ./cmd/library & \
 	PORT=8083 go run ./cmd/occupancy & \

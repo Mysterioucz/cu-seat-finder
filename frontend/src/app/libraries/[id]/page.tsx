@@ -2,9 +2,8 @@ import Link from "next/link";
 import { getLang } from "@/lib/langServer";
 import { getAuthUser } from "@/lib/authServer";
 import { serverApi } from "@/lib/serverApi";
-import { library as libraryApi, safe } from "@/lib/libraryGrpc";
 import { t } from "@/lib/i18n";
-import type { Occupancy, ReviewsResponse } from "@/lib/types";
+import type { Library, Occupancy, ReviewsResponse, Room } from "@/lib/types";
 import Card from "@/components/Card";
 import OccupancyBadge, { OccupancyBar } from "@/components/OccupancyBadge";
 import { StarRatingDisplay } from "@/components/StarRating";
@@ -19,10 +18,10 @@ export default async function LibraryDetailPage({ params }: { params: Promise<{ 
   const user = await getAuthUser();
 
   const [libRes, roomsRes, reviewsRes, occRes] = await Promise.all([
-    safe(libraryApi.get(id)),
-    safe(libraryApi.rooms(id)),
-    serverApi<ReviewsResponse>("review", `/api/reviews?library_id=${id}`),
-    serverApi<Occupancy>("occupancy", `/api/occupancy/${id}`),
+    serverApi<Library>(`/api/libraries/${id}`),
+    serverApi<Room[]>(`/api/libraries/${id}/rooms`),
+    serverApi<ReviewsResponse>(`/api/reviews?library_id=${id}`),
+    serverApi<Occupancy>(`/api/occupancy/${id}`),
   ]);
 
   if (!libRes.data) {

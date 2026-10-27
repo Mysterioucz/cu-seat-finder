@@ -41,6 +41,12 @@ func migrate(ctx context.Context, db *pgxpool.Pool) error {
 			EXCLUDE USING gist (room_id WITH =, during WITH &&) WHERE (status IN ('pending','accepted'))
 		);
 		CREATE UNIQUE INDEX IF NOT EXISTS reservations_reference_key ON reservation.reservations (reference);
+
+		-- Tables created before the no-show feature lack these; bring them up to date.
+		ALTER TABLE reservation.reservations ADD COLUMN IF NOT EXISTS checked_in_at timestamptz;
+		ALTER TABLE reservation.reservations DROP CONSTRAINT IF EXISTS reservations_status_check;
+		ALTER TABLE reservation.reservations ADD CONSTRAINT reservations_status_check
+			CHECK (status IN ('pending','accepted','rejected','cancelled','no_show'));
 	`)
 	return err
 }

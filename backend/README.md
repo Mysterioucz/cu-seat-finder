@@ -2,18 +2,19 @@
 
 Five small Go services. User, Library, Occupancy and Reservation share one
 Postgres database (one schema per service); **Review stores its data in MongoDB**
-(collection `seatfinder.reviews`). No
-gateway — the Next.js frontend proxies REST `/api/*` to the right port via
-`next.config.ts` rewrites. The **Library service is gRPC-only**
-(`proto/library/v1/library.proto`, full CRUD); Occupancy, Reservation and Review
-call it over gRPC, and the Next.js server translates REST to gRPC for the browser.
+(collection `seatfinder.reviews`). An **API Gateway** (`cmd/gateway`, :8080,
+ADR-008) is the single entry point: the Next.js frontend sends every `/api/*` call
+to it, and it checks the JWT, rate-limits, logs and routes to the owning service.
+The **Library service is gRPC-only** (`proto/library/v1/library.proto`, full CRUD);
+Occupancy, Reservation and Review call it over gRPC, and the gateway translates
+REST to gRPC for the browser.
 See `.planning/API-CONTRACT.md` for the full API.
 
 ## Run it
 
 ```
 make db     # starts Postgres + MongoDB + RabbitMQ in Docker (repo-root docker-compose.yml)
-make run    # starts all 5 services, Ctrl-C stops all of them
+make run    # starts the gateway (:8080) + all 5 services, Ctrl-C stops all of them
 make test   # go test ./... (pure-logic tests, no DB needed)
 make build  # go build ./...
 make proto  # regenerate gen/ from ../proto (needs buf + protoc-gen-go + protoc-gen-go-grpc; gen/ is committed)
@@ -21,18 +22,28 @@ make proto  # regenerate gen/ from ../proto (needs buf + protoc-gen-go + protoc-
 
 Copy `.env.example` to `.env` to override defaults (DB URL, Mongo URL, JWT secret, ports).
 
-## Run in Docker (ADR-008)
+## Run in Docker (ADR-008, ADR-009)
 
 ```
-make up       # infra + all 5 services as containers (compose profile "app"), same ports as `make run`
+make up       # infra + Consul + gateway + all 5 services as containers (compose profile "app")
 make down     # stop them
 make backup   # pg_dump + mongodump into ../backups/<timestamp>/ (cron it daily)
 ```
 
-**Service discovery:** inside Compose, services reach each other by service name
-(`LIBRARY_GRPC_ADDR=library:9082`, `USER_URL=http://user:8081`, `postgres:5432`, ...)
-through Docker DNS. The addresses are environment variables, with no registry. The frontend
-(`pnpm dev`) is unchanged and uses the published `localhost` ports.
+**Service discovery (Consul):** every service registers itself in Consul on start-up
+with a health check (`internal/registry`), and callers use registry names instead of
+host:port (`LIBRARY_GRPC_ADDR=consul://library`, `USER_URL=consul://user`). Only
+instances whose check passes are returned, round-robin. Registry UI:
+http://localhost:8500. Infra (`postgres`, `mongo`, `rabbitmq`) is still reached by
+Compose DNS name. With `make run` the addresses are plain `localhost` ones and Consul
+is not used.
+
+Only the gateway (http://localhost:8080) is published, so any service can be scaled:
+
+```
+docker compose --profile app up -d --scale library=3   # new instances get traffic once healthy
+docker kill cu-seat-finder-library-2                    # requests keep succeeding on the others
+```
 
 **Health:** `GET /healthz` on each REST service; Library serves `grpc.health.v1`
 (`grpcurl -plaintext localhost:9082 grpc.health.v1.Health/Check`). `docker compose ps`
@@ -43,13 +54,17 @@ shows `healthy`, and a crashed service restarts automatically (`restart: unless-
 ```
 echo '{"room_id":"room-central-1","start_time":"2030-01-01T10:00:00Z","duration_minutes":60}' > /tmp/body.json
 ab -n 500 -c 10 -p /tmp/body.json -T application/json -H "authorization: Bearer $TOKEN" \
-  http://localhost:8084/api/reservations     # read the 95% line; most replies are 409/422 by design
+  http://localhost:8080/api/reservations     # through the gateway; read the 95% line; most replies are 409/422 by design
 ```
 
 ## Ports
 
+Clients use the gateway only; the service ports are reachable directly with
+`make run`, and only inside the Docker network with `make up`.
+
 | Service     | Port | Prefix                        |
 |-------------|------|--------------------------------|
+| gateway     | 8080 | all `/api/*` (the only published port in Docker) |
 | user        | 8081 | /api/auth, /api/users          |
 | library     | 9082 | gRPC `library.v1.LibraryService` (`GRPC_PORT`) |
 | occupancy   | 8083 | /api/occupancy                 |
@@ -74,7 +89,7 @@ section of `.planning/API-CONTRACT.md`.
 
 ```
 # admin token, then check a student in by scanning (posting) their reference
-curl -s localhost:8084/api/reservations/checkin -H "authorization: Bearer $TOKEN" \
+curl -s localhost:8080/api/reservations/checkin -H "authorization: Bearer $TOKEN" \
   -H 'content-type: application/json' -d '{"reference":"CU-7F3K9Q"}'
 ```
 
@@ -89,9 +104,11 @@ after pulling a schema change (such as this one), reset dev data with
 Server reflection is on, so no `-proto` flag is needed
 (`go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest`).
 Reads are open; Create/Update/Delete need an admin JWT as `authorization` metadata.
+These call :9082 directly, so they work with `make run`; under `make up` the port is
+not published (use `docker compose exec` or the gateway's REST `/api/libraries`).
 
 ```
-TOKEN=$(curl -s localhost:8081/api/auth/admin/login -H 'content-type: application/json' \
+TOKEN=$(curl -s localhost:8080/api/auth/admin/login -H 'content-type: application/json' \
   -d '{"email":"admin@cu.ac.th","password":"admin123"}' | jq -r .token)
 H="authorization: Bearer $TOKEN"
 G="grpcurl -plaintext"
