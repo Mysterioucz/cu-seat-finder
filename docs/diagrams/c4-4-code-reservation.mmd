@@ -1,0 +1,70 @@
+%% C4 Level 4: Code view of the Reservation Service
+classDiagram
+    direction LR
+    class server {
+        -db pgxpool.Pool
+        -jwtSecret string
+        -library LibraryServiceClient
+        -userURL string
+        -events broker.Publisher
+        +routes(mux)
+        +create(w, r)
+        +accept(w, r)
+        +reject(w, r)
+        +cancel(w, r)
+        +checkIn(w, r)
+        +listMine(w, r)
+        +listAll(w, r)
+        +noShowLoop(ctx)
+        +sweepNoShows(ctx) error
+        -loadActiveBookings(ctx, userID) []activeBooking
+        -insertReservation(ctx, userID, roomID, start, end) Reservation
+    }
+    class Reservation {
+        +ID string
+        +UserID string
+        +RoomID string
+        +StartTime time.Time
+        +EndTime time.Time
+        +Status string
+        +Reference *string
+        +CheckinDeadline *time.Time
+        +CheckedInAt *time.Time
+        +CreatedAt time.Time
+    }
+    class createReq {
+        +RoomID string
+        +StartTime string
+        +DurationMinutes int
+    }
+    class activeBooking {
+        +StartTime time.Time
+        +DurationMinutes int
+    }
+    class QuotaPolicy {
+        <<functions>>
+        +quotaCheck(existing, newStart, minutes, activePenalty) error
+        +overlaps(aStart, aEnd, bStart, bEnd) bool
+    }
+    class Publisher {
+        +Publish(ctx, routingKey, messageID, event) error
+        +Close()
+    }
+    class NoShowEvent {
+        +ReservationID string
+        +UserID string
+        +RoomID string
+        +StartTime time.Time
+        +CheckinDeadline time.Time
+    }
+    class LibraryServiceClient {
+        <<interface>>
+        +GetRoom(ctx, GetRoomRequest) Room
+    }
+    server ..> createReq : decodes
+    server ..> Reservation : stores / returns
+    server ..> QuotaPolicy : checks quota
+    QuotaPolicy ..> activeBooking : reads
+    server --> Publisher : publishes with
+    server --> LibraryServiceClient : validates room via
+    Publisher ..> NoShowEvent : sends

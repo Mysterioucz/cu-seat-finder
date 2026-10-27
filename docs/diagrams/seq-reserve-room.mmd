@@ -1,0 +1,42 @@
+%% UC-02 Reserve Meeting Room, then admin accepts
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    participant W as Web App (Next.js)
+    participant G as API Gateway
+    participant R as Reservation Service
+    participant L as Library Service
+    participant U as User Service
+    participant DB as PostgreSQL (reservation)
+    actor A as Admin
+
+    C->>W: Choose room, start time, duration
+    W->>G: POST /api/reservations (JWT)
+    G->>G: Verify JWT, add X-Request-ID
+    G->>R: POST /api/reservations
+    R->>L: gRPC GetRoom(room_id)
+    L-->>R: Room
+    R->>U: REST GET /api/users/{id} (viewProfile)
+    U-->>R: { active_penalty }
+    R->>DB: SELECT active bookings of user
+    R->>R: quotaCheck (2 active, 180 min/day, penalty)
+    alt penalty or quota exceeded
+        R-->>G: 403 penalty / 422 quota_exceeded
+    else room free
+        R->>DB: BEGIN, lock room rows, INSERT status=pending, COMMIT
+        alt slot taken concurrently
+            DB-->>R: overlap (EXCLUDE constraint)
+            R-->>G: 409 conflict
+        else inserted
+            R-->>G: 201 Created (pending)
+        end
+    end
+    G-->>W: response
+    W-->>C: Show result / pick another room
+
+    A->>W: Accept booking
+    W->>G: POST /api/reservations/{id}/accept (admin JWT)
+    G->>R: forward
+    R->>DB: status=accepted, reference, check-in deadline = start + 15 min
+    R-->>G: 200 (reference / QR code)
+    G-->>W: 200

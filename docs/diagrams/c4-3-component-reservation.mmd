@@ -1,0 +1,43 @@
+---
+config:
+  layout: elk
+---
+%% C4 Level 3: Components of the Reservation Service
+flowchart LR
+    GW["<b>API Gateway</b><br/>[Container]"]
+
+    subgraph RS["Reservation Service [Go container]"]
+        direction LR
+        Router["<b>HTTP Router + Auth middleware</b><br/>[net/http ServeMux, authn]<br/><small>Checks JWT and role per route</small>"]
+        Handlers["<b>Reservation Handlers</b><br/>[handlers.go]<br/><small>create, accept, reject, cancel,<br/>checkIn, listMine, listAll</small>"]
+        Quota["<b>Quota Policy</b><br/>[quota.go]<br/><small>max 2 active bookings,<br/>180 min per day, penalty block</small>"]
+        Store["<b>Reservation Store</b><br/>[store.go, pgx]<br/><small>row lock + EXCLUDE constraint<br/>against double booking</small>"]
+        Sweeper["<b>No-show Sweeper</b><br/>[noshow.go, 1-min ticker]<br/><small>table-as-outbox,<br/>FOR UPDATE SKIP LOCKED</small>"]
+        LibClient["<b>Library Client</b><br/>[gRPC stub]"]
+        UserClient["<b>User Client</b><br/>[svcclient, REST]"]
+        Pub["<b>Event Publisher</b><br/>[broker.Publisher]<br/><small>publisher confirms</small>"]
+    end
+
+    Library["<b>Library Service</b><br/>[Container, gRPC]"]
+    User["<b>User Service</b><br/>[Container, REST]"]
+    PG[("<b>PostgreSQL</b><br/>schema reservation")]
+    MQ[["<b>RabbitMQ</b>"]]
+
+    GW -- "REST /api/reservations" --> Router
+    Router --> Handlers
+    Handlers --> Quota
+    Handlers --> Store
+    Handlers --> LibClient
+    Handlers --> UserClient
+    Sweeper --> Store
+    Sweeper --> Pub
+    LibClient == "GetRoom" ==> Library
+    UserClient -- "GET /api/users/{id}" --> User
+    Store --> PG
+    Pub -. "reservation.no_show" .-> MQ
+
+    classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
+    classDef container fill:#438dd5,stroke:#2e6295,color:#fff
+    class Router,Handlers,Quota,Store,Sweeper,LibClient,UserClient,Pub component
+    class GW,Library,User,PG,MQ container
+    style RS fill:#ffffff,stroke:#444,stroke-dasharray: 5 5

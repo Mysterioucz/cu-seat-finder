@@ -1,0 +1,65 @@
+---
+config:
+  layout: elk
+---
+%% C4 Level 2: Containers
+flowchart LR
+    Customer["<b>Customer</b><br/>[Person]"]
+    Admin["<b>Admin</b><br/>[Person]"]
+
+    subgraph SF["CU SeatFinder"]
+        direction LR
+        Web["<b>Web App</b><br/>[Next.js, SSR]<br/><small>Pages and UI, ADR-001</small>"]
+        GW["<b>API Gateway</b><br/>[Go, :8080]<br/><small>Routing, JWT check, REST to gRPC,<br/>rate limit, request ID, ADR-008</small>"]
+
+        User["<b>User Service</b><br/>[Go, REST :8081]<br/><small>Login, profile, penalties</small>"]
+        Library["<b>Library Service</b><br/>[Go, gRPC :9082]<br/><small>Libraries and rooms, full CRUD</small>"]
+        Occ["<b>Occupancy Service</b><br/>[Go, REST :8083]<br/><small>Polls turnstiles, live %</small>"]
+        Res["<b>Reservation Service</b><br/>[Go, REST :8084]<br/><small>Booking, quota, check-in, no-show</small>"]
+        Rev["<b>Review Service</b><br/>[Go, REST :8085]<br/><small>Ratings, tags, moderation</small>"]
+
+        MQ[["<b>RabbitMQ</b><br/>[Message broker]<br/><small>exchange reservation.events, ADR-007</small>"]]
+        PG[("<b>PostgreSQL</b><br/>[RDBMS]<br/><small>schema per service, ADR-006</small>")]
+        Mongo[("<b>MongoDB</b><br/>[NoSQL]<br/><small>collection reviews, ADR-006</small>")]
+    end
+
+    SSO["<b>CU SSO</b><br/>[External]"]
+    TS["<b>Turnstile Systems</b><br/>[External]"]
+
+    Customer -- "HTTPS" --> Web
+    Admin -- "HTTPS" --> Web
+    Web -- "REST /api/*" --> GW
+
+    GW -- "REST" --> User
+    GW -- "REST" --> Occ
+    GW -- "REST" --> Res
+    GW -- "REST" --> Rev
+    GW == "gRPC" ==> Library
+
+    Res == "gRPC GetRoom" ==> Library
+    Rev == "gRPC GetLibrary" ==> Library
+    Occ == "gRPC ListLibraries" ==> Library
+    Res -- "REST viewProfile" --> User
+    Rev -- "REST viewProfile" --> User
+
+    Res -. "publish reservation.no_show [AMQP]" .-> MQ
+    MQ -. "consume [AMQP]" .-> User
+
+    User --> PG
+    Library --> PG
+    Occ --> PG
+    Res --> PG
+    Rev --> Mongo
+
+    User -- "OIDC" --> SSO
+    Occ -- "poll" --> TS
+
+    classDef person fill:#08427b,stroke:#052e56,color:#fff
+    classDef container fill:#438dd5,stroke:#2e6295,color:#fff
+    classDef infra fill:#85bbf0,stroke:#5d82a8,color:#000
+    classDef external fill:#999999,stroke:#6b6b6b,color:#fff
+    class Customer,Admin person
+    class Web,GW,User,Library,Occ,Res,Rev container
+    class MQ,PG,Mongo infra
+    class SSO,TS external
+    style SF fill:#ffffff,stroke:#444,stroke-dasharray: 5 5

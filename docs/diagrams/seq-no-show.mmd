@@ -1,0 +1,28 @@
+%% No-show penalty through RabbitMQ (ADR-007)
+sequenceDiagram
+    autonumber
+    participant S as No-show Sweeper (Reservation)
+    participant DB as PostgreSQL (reservation)
+    participant MQ as RabbitMQ (reservation.events)
+    participant U as User Service (consumer)
+    participant UDB as PostgreSQL (users)
+
+    loop every 1 minute
+        S->>DB: BEGIN, SELECT accepted, not checked in, deadline passed FOR UPDATE SKIP LOCKED
+        DB-->>S: due bookings
+        loop each due booking
+            S->>MQ: publish reservation.no_show (message_id = reservation_id)
+            MQ-->>S: publisher confirm
+        end
+        S->>DB: UPDATE status = no_show, COMMIT
+    end
+
+    MQ->>U: deliver from queue user.reservation-no-show
+    U->>UDB: INSERT penalty (reservation_id PK) ON CONFLICT DO NOTHING
+    alt stored or duplicate
+        U-->>MQ: ack
+    else transient error (DB down)
+        U-->>MQ: nack, requeue and retry
+    else malformed or unknown user
+        U-->>MQ: reject, message goes to dead-letter queue
+    end

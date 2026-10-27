@@ -1,0 +1,21 @@
+%% C4 Level 1: System Context
+flowchart TB
+    Customer["<b>Customer</b><br/>[Person]<br/><small>CU student or staff member</small>"]
+    Admin["<b>Admin</b><br/>[Person]<br/><small>Library staff</small>"]
+
+    SF["<b>CU SeatFinder</b><br/>[Software System]<br/><small>Shows live library occupancy, books meeting rooms,<br/>collects and moderates library reviews</small>"]
+
+    SSO["<b>CU SSO</b><br/>[External System]<br/><small>University OIDC identity provider<br/>(mock IdP during development, ADR-004)</small>"]
+    TS["<b>Library Turnstile Systems</b><br/>[External System]<br/><small>Tap-in / tap-out counts per library<br/>(access not yet granted, ADR-005)</small>"]
+
+    Customer -- "Views occupancy, reserves rooms, writes reviews [HTTPS]" --> SF
+    Admin -- "Accepts bookings, moderates reviews, manages libraries [HTTPS]" --> SF
+    SF -- "Authenticates students and staff [OIDC]" --> SSO
+    SF -- "Polls occupancy counts [scheduled pull]" --> TS
+
+    classDef person fill:#08427b,stroke:#052e56,color:#fff
+    classDef system fill:#1168bd,stroke:#0b4884,color:#fff
+    classDef external fill:#999999,stroke:#6b6b6b,color:#fff
+    class Customer,Admin person
+    class SF system
+    class SSO,TS external

@@ -1,0 +1,29 @@
+%% UC-00 Authentication
+sequenceDiagram
+    autonumber
+    actor C as Customer
+    actor A as Admin
+    participant W as Web App (Next.js)
+    participant G as API Gateway
+    participant U as User Service
+    participant IdP as CU SSO / mock OIDC IdP
+    participant DB as PostgreSQL (users)
+
+    C->>W: Sign in with student or staff ID
+    W->>G: POST /api/auth/login
+    G->>U: forward (public route, no JWT needed)
+    U->>IdP: Authenticate(student_id)
+    IdP-->>U: verified identity (name)
+    U->>DB: find user, create on first login (role = customer)
+    U-->>G: 200 { token (JWT), user }
+    G-->>W: 200
+    W-->>C: Store session, go to home page
+
+    A->>W: Sign in with email and password
+    W->>G: POST /api/auth/admin/login
+    G->>U: forward
+    U->>DB: load admin, bcrypt compare
+    U-->>G: 200 { token (JWT, role = admin) }
+    G-->>W: 200
+
+    Note over W,G: Later calls send Authorization: Bearer JWT. The gateway verifies it, and each service checks the role again.
