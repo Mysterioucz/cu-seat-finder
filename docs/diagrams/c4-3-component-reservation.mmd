@@ -13,8 +13,9 @@ flowchart LR
         Quota["<b>Quota Policy</b><br/>[quota.go]<br/><small>max 2 active bookings,<br/>180 min per day, penalty block</small>"]
         Store["<b>Reservation Store</b><br/>[store.go, pgx]<br/><small>row lock + EXCLUDE constraint<br/>against double booking</small>"]
         Sweeper["<b>No-show Sweeper</b><br/>[noshow.go, 1-min ticker]<br/><small>table-as-outbox,<br/>FOR UPDATE SKIP LOCKED</small>"]
-        LibClient["<b>Library Client</b><br/>[gRPC stub]"]
+        LibClient["<b>Library Client</b><br/>[gRPC stub, consul:// resolver]"]
         UserClient["<b>User Client</b><br/>[svcclient, REST]"]
+        RegClient["<b>Registry Client</b><br/>[internal/registry]<br/><small>registers this instance,<br/>resolves consul:// names</small>"]
         Pub["<b>Event Publisher</b><br/>[broker.Publisher]<br/><small>publisher confirms</small>"]
     end
 
@@ -22,6 +23,7 @@ flowchart LR
     User["<b>User Service</b><br/>[Container, REST]"]
     PG[("<b>PostgreSQL</b><br/>schema reservation")]
     MQ[["<b>RabbitMQ</b>"]]
+    Consul{{"<b>Consul</b><br/>[Service registry]"}}
 
     GW -- "REST /api/reservations" --> Router
     Router --> Handlers
@@ -35,9 +37,12 @@ flowchart LR
     UserClient -- "GET /api/users/{id}" --> User
     Store --> PG
     Pub -. "reservation.no_show" .-> MQ
+    LibClient -. "healthy library instances" .-> RegClient
+    UserClient -. "healthy user instance" .-> RegClient
+    RegClient -- "register + lookup [HTTP API]" --> Consul
 
     classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
     classDef container fill:#438dd5,stroke:#2e6295,color:#fff
-    class Router,Handlers,Quota,Store,Sweeper,LibClient,UserClient,Pub component
-    class GW,Library,User,PG,MQ container
+    class Router,Handlers,Quota,Store,Sweeper,LibClient,UserClient,Pub,RegClient component
+    class GW,Library,User,PG,MQ,Consul container
     style RS fill:#ffffff,stroke:#444,stroke-dasharray: 5 5

@@ -13,7 +13,9 @@ sequenceDiagram
     C->>W: Choose room, start time, duration
     W->>G: POST /api/reservations (JWT)
     G->>G: Verify JWT, add X-Request-ID
+    Note over G: Pick a healthy Reservation instance from Consul (round-robin)
     G->>R: POST /api/reservations
+    Note over R,U: Library and User instances are resolved through Consul (consul://library, consul://user)
     R->>L: gRPC GetRoom(room_id)
     L-->>R: Room
     R->>U: REST GET /api/users/{id} (viewProfile)

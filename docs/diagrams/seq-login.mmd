@@ -11,6 +11,7 @@ sequenceDiagram
 
     C->>W: Sign in with student or staff ID
     W->>G: POST /api/auth/login
+    Note over G: Pick a healthy User instance from Consul
     G->>U: forward (public route, no JWT needed)
     U->>IdP: Authenticate(student_id)
     IdP-->>U: verified identity (name)
