@@ -353,7 +353,7 @@ Accepted
 
 **Context**
 
-The browser currently reaches four REST services through Next.js rewrites, and Next.js route handlers translate REST to gRPC for the Library Service. Backend routing and a gRPC client therefore live inside the frontend, every service parses tokens and handles CORS on its own, and there is no single place to log, time or rate-limit requests, which the load tests for the performance quality attribute need.
+Before this decision, the browser reached four REST services through Next.js rewrites, and Next.js route handlers translated REST to gRPC for the Library Service. Backend routing and a gRPC client therefore lived inside the frontend, every service parsed tokens and handled CORS on its own, and there was no single place to log, time or rate-limit requests, which the load tests for the performance quality attribute need.
 
 Options: keep the Next.js rewrites as a Backend-for-Frontend; an off-the-shelf gateway (Traefik, Kong, NGINX); or a small gateway written in Go. Off-the-shelf gateways route HTTP well, but REST-to-gRPC translation needs plugins or a separate grpc-gateway build with annotated protos, and each brings its own configuration language. A Go gateway reuses the team's JWT package (internal/authn) and the generated Library gRPC client, and is one more binary in the same build (ADR-003).
 
@@ -391,7 +391,7 @@ The gateway, five services, two databases and a message broker have to find each
 
 Use Consul as the service registry with client-side discovery, and run every container with Docker Compose.
 
-* **Registration.** On start-up every service (and the gateway) registers itself in Consul under its service name, with its container IP, its port and a health check that Consul runs every 5 seconds (GET /healthz over HTTP, or a TCP check on the Library Service's gRPC port). The registration is repeated every 30 seconds, and the instance deregisters itself on shutdown. An instance whose check stays critical for 1 minute is removed (internal/registry).
+* **Registration.** On start-up every service (and the gateway) registers itself in Consul under its service name, with its container IP, its port and a health check that Consul runs every 5 seconds (GET /healthz over HTTP, or a grpc.health.v1 check on the Library Service's gRPC port). The registration is repeated every 30 seconds, and the instance deregisters itself on shutdown. An instance whose check stays critical for 1 minute is removed (internal/registry).
 * **Lookup.** Callers address services by name, as consul://user or consul://library, instead of host:port. The registry client asks Consul for the instances whose check is passing, caches the answer for one second, and picks one round-robin. The gateway's reverse proxy picks an instance per request and retries a GET once on another instance if the connection is refused. gRPC clients use a consul:// resolver, so gRPC balances across Library instances on its own.
 * **Scaling.** Only the gateway publishes a port (8080) for application traffic, so any service can be scaled with docker compose --profile app up -d --scale library=3, and the new instances receive traffic as soon as their health check passes.
 * **Infrastructure.** PostgreSQL, MongoDB, RabbitMQ and Consul itself are single instances and are still reached by their Compose DNS name.
@@ -502,7 +502,7 @@ The Web App renders pages and sends every API call to the API Gateway (ADR-008),
 ![Figure 3: C4 Level 3, components of the Reservation Service](diagrams/c4-3-component-reservation.png)
 *Figure 3: C4 Level 3, components of the Reservation Service*
 
-The Reservation Service is shown because it uses all three communication styles: it serves REST, calls the Library Service over gRPC and the User Service over REST, and publishes events to RabbitMQ. The No-show Sweeper runs on a one-minute timer and uses the reservations table as its outbox (ADR-007).
+The Reservation Service is shown because it uses all three communication styles: it serves REST, calls the Library Service over gRPC and the User Service over REST, and publishes events to RabbitMQ. Its Registry Client registers the instance in Consul and resolves consul:// names for the Library and User clients. The No-show Sweeper runs on a one-minute timer and uses the reservations table as its outbox (ADR-007).
 
 ### **Level 4: Code of the Reservation Service**
 
@@ -536,7 +536,7 @@ Delivery is at-least-once: the sweeper only marks rows no_show after the broker 
 
 # **Load Test Plan**
 
-Load tests run with k6 against the whole system started by Docker Compose on one machine. Every request goes through the API Gateway, so the results include the gateway hop. Scripts are kept in loadtest/ in the repository. Two test types are run:
+Load tests run with k6 against the whole system started by Docker Compose on one machine. Every request goes through the API Gateway, so the results include the gateway hop. Scripts are kept in loadtest/ in the repository. Two load test types are run; the other non-functional requirements are checked by the tests in NFR Verification.
 
 | Test type | Goal | Load profile | Pass criteria |
 | :---- | :---- | :---- | :---- |
@@ -550,16 +550,36 @@ Load tests run with k6 against the whole system started by Docker Compose on one
 * 15% POST /api/reservations on a small set of rooms, so concurrent bookings compete for the same slots (UC-02);
 * 5% POST /api/reviews (UC-04).
 
-Responses 409 (slot taken) and 422 (quota reached) are expected outcomes and count as successes; only 5xx responses and timeouts count as errors. After each run, a SQL query confirms that no two active reservations overlap. Recorded metrics: requests per second, p50/p95/p99 latency per endpoint, error rate, and CPU and memory per container (docker stats).
+Responses 409 (slot taken), 422 (quota reached) and 403 (active penalty) are expected outcomes and count as successes; only 5xx responses and timeouts count as errors. After each run, a SQL query confirms that no two active reservations overlap. Recorded metrics: requests per second, p50/p95/p99 latency per endpoint, error rate, and CPU and memory per container (docker stats).
 
 ### **Results**
 
 | Test | Peak VUs | Requests/s | p95 reservation | p95 reads | Error rate | Result |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| Load test | 50 | TBD | TBD | TBD | TBD | TBD |
-| Stress test | TBD | TBD | TBD | TBD | TBD | TBD |
+| Load test | 50 | 53 | 2.8 ms | 14.2 ms | 0% | Pass |
+| Stress 50 | 50 | 60 | 2.9 ms | 15.3 ms | 0% | Pass |
+| Stress 100 | 100 | 121 | 3.0 ms | 16.1 ms | 0% | Pass |
+| Stress 200 | 200 | 240 | 3.1 ms | 18.3 ms | 0% | Pass |
+| Stress 400 | 400 | 481 | 4.6 ms | 28.1 ms | 0% | Pass |
 
-**Interpretation** (to be completed after the runs): which component limits throughput first (gateway, a service, or PostgreSQL connections), and what that means for the design.
+**Interpretation:** every target was met. In the stress test no step crossed a threshold, so the breaking point is above 400 virtual users on one machine: throughput grew in step with load (about 60 to 480 requests/s) and the error rate stayed at 0%. Reads are the slower path; their p95 rose from 15 ms to 28 ms at 400 users, while reservations stayed under 5 ms. The busiest containers at 400 users were the Review Service (peak 3.6 CPU cores) and MongoDB (1.2 cores), which serve review reads and writes, so they would be the first to need a second replica; PostgreSQL stayed under 0.2 cores and the gateway under 0.5 cores. After every run the overlap query found 0 double-booked rooms. Responses 409 and 422 (12.7% of requests) are expected outcomes, not errors, and the gateway rate limiter rejected 0.3% of requests at 200 and 400 users.
+
+Runs: load-20261027-195449 and stress-20261027-200253. make loadtest and make stresstest write the k6 summary (.json), an HTML report with charts (.html) and docker stats (.stats.txt) to loadtest/results/, which is not committed; re-run them to reproduce the numbers.
+
+# **NFR Verification**
+
+Every non-functional requirement has an automated check that runs against the stack started by make up (and pnpm dev for the UI checks).
+
+| Requirement | Test | Run with | Pass condition | Result |
+| :---- | :---- | :---- | :---- | :---- |
+| Performance: reservations p95 < 1 s, reads p95 < 500 ms, error rate < 1% | loadtest/load.js, loadtest/stress.js (k6) | make loadtest, make stresstest | k6 thresholds hold at every step; the overlap query returns 0 rows | Pass |
+| Performance: occupancy within two poll intervals | loadtest/resilience.sh freshness | make nfr-resilience | Oldest occupancy reading seen over 2.5 poll intervals is at most 2 poll intervals (60 s) | TBD |
+| Performance: uptime at least 99%; health checks and automatic restart | loadtest/resilience.sh uptime | make nfr-resilience | One of two Library replicas is crashed under about 10 requests/s: it is back and healthy within 30 s and fewer than 1% of gateway requests fail | TBD |
+| Operational: daily backup | loadtest/resilience.sh backup | make nfr-resilience | The backup restores into scratch databases with the same row and document counts as the live ones | TBD |
+| Security: gateway JWT check and role-based access | loadtest/security.js (k6) | make nfr-security | Every protected route returns 401 with no or a forged JWT and 403 for the wrong role; the Reservation Service itself rejects an admin booking (403) | TBD |
+| Operational and Usability: works on mobile | frontend/e2e/nfr.mjs (Playwright) | pnpm test:nfr | Customer and admin pages fit a 375 px screen with no horizontal scroll | TBD |
+| Usability: few steps to check occupancy and book | frontend/e2e/nfr.mjs | pnpm test:nfr | Occupancy is visible on the landing page with 0 extra clicks; booking takes 7 user actions from sign-in to confirmation | TBD |
+| Cultural: Thai UI, English optional | frontend/e2e/nfr.mjs | pnpm test:nfr | Thai by default (html lang="th"); the EN toggle switches the UI to English | TBD |
 
 # **Quality Attribute: Performance**
 
@@ -581,7 +601,7 @@ Performance is the quality attribute the team measures. It is written as a quali
 * PostgreSQL connection pooling (pgxpool) and indexes on the columns each query filters by; double booking is rejected by a database constraint rather than by extra round trips.
 * The gateway is stateless, so it and the busiest service can run as several replicas if the stress test shows they are the bottleneck.
 
-**Measurement.** The load test above is the measurement. If the baseline run misses a target, one tactic is applied (for example a second Reservation replica), the test is repeated, and both results are reported side by side.
+**Measurement.** The load and stress tests above are the measurement. All targets were met at 50 users and every stress step up to 400 users, so no extra tactic was needed; the stress test shows that the Review Service and MongoDB would be the first components to scale.
 
 # **Risk Matrix**
 
@@ -593,7 +613,7 @@ Each risk is rated for likelihood and impact from 1 (Low) to 3 (High); score = l
 | R2 | The API Gateway fails or becomes the bottleneck, so every request fails | Medium (2) | High (3) | 6 | Stateless gateway with health check and automatic restart; services behind it can be scaled and are health-checked by Consul (ADR-009); capacity measured in the stress test |
 | R3 | CU SSO credentials are not issued in time, or SSO is down | High (3) | Medium (2) | 6 | Identity provider behind an interface; mock OIDC provider for the demo (ADR-004) |
 | R4 | Free-tier limits of Prisma Postgres or MongoDB Atlas (connections, storage) are hit during tests or the demo | Medium (2) | Medium (2) | 4 | Run load tests against local containers; cap connection pool sizes; daily backups |
-| R5 | The team is new to Go, and the gateway and load tests are still to be built before the presentation | Medium (2) | Medium (2) | 4 | Shared checklist with owners; build the gateway first; freeze features one week before the presentation |
+| R5 | The team is new to Go, and a late change could break the live demo | Medium (2) | Medium (2) | 4 | Run make loadtest, make nfr-security, make nfr-resilience and pnpm test:nfr before every demo; freeze features one week before the presentation |
 | R6 | Double booking under concurrent requests | Low (1) | High (3) | 3 | Row lock in a transaction plus an EXCLUDE constraint (ADR-006); checked by the overlap query after every load test |
 | R7 | No-show events pile up in the dead-letter queue, or RabbitMQ is down, so penalties are not applied | Low (1) | Medium (2) | 2 | Reservations table as outbox and an idempotent consumer (ADR-007); dead-letter queue watched in the RabbitMQ management UI |
 
@@ -617,7 +637,7 @@ How each term-project requirement in the course syllabus is covered by this docu
 | API Gateway | ADR-008; Step 4 | backend/cmd/gateway | Implemented |
 | Service discovery | ADR-009; Step 4 | Consul registry: backend/internal/registry, docker-compose.yml | Implemented |
 | RDBMS and NoSQL | ADR-006 | PostgreSQL (4 services), MongoDB (Review) | Implemented |
-| Load test, at least 2 types | Load Test Plan | loadtest/ (k6) | To do |
+| Load test, at least 2 types | Load Test Plan; NFR Verification | loadtest/ (k6: load.js, stress.js) | Implemented |
 | Risk matrix, at least 3 issues | Risk Matrix | None (document only) | Documented |
-| 1 measurable quality attribute | Quality Attribute: Performance | Load test results | To do |
+| 1 measurable quality attribute | Quality Attribute: Performance | Load and stress test results | Implemented |
 | Live demo of the front-end UI | UC-00 to UC-04 | frontend/ (Next.js) | Implemented |
