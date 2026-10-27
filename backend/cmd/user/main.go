@@ -13,6 +13,7 @@ import (
 	"github.com/cu-seat-finder/backend/internal/broker"
 	"github.com/cu-seat-finder/backend/internal/dbx"
 	"github.com/cu-seat-finder/backend/internal/httpx"
+	"github.com/cu-seat-finder/backend/internal/registry"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -48,6 +49,7 @@ func main() {
 	srv.routes(mux)
 	mux.HandleFunc("GET /healthz", httpx.Healthz)
 
+	registry.Register("user", port, registry.HTTP) // ADR-009
 	log.Printf("user service listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, httpx.WithCORS(mux)))
 }

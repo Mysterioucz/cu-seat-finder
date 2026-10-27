@@ -1,10 +1,15 @@
-# `make db`  -> infra only (postgres, mongo, rabbitmq); run services with `make run`.
-# `make up`  -> infra + all 5 services in containers (profile "app", ADR-008).
+# `make db`  -> infra only (postgres, mongo, rabbitmq, consul); run services with `make run`.
+# `make up`  -> infra + gateway + all 5 services in containers (profile "app").
 #
-# Service discovery (ADR-008): containers find each other by Compose service
-# name through Docker's built-in DNS (e.g. LIBRARY_GRPC_ADDR=library:9082).
-# No registry: addresses are plain env vars, so the same binaries run under
-# Kubernetes Service DNS without code changes.
+# Service discovery (ADR-009): every service registers itself in Consul with a
+# health check, and callers address services by name (consul://library,
+# consul://user, ...). Only healthy instances are returned, so a replica that
+# dies stops receiving traffic and `--scale <service>=N` needs no config change.
+# Infrastructure (postgres, mongo, rabbitmq, consul) is single-instance and
+# still reached by Docker DNS name.
+#
+# Only the API Gateway (:8080) is published for application traffic (ADR-008);
+# the services listen inside the Docker network only.
 
 # Shared settings for the Go services. Every service gets the same env; each
 # reads only what it needs.
@@ -17,14 +22,19 @@ x-app: &app
     DATABASE_URL: postgres://seat:seat@postgres:5432/seatfinder
     MONGO_URL: mongodb://mongo:27017
     RABBITMQ_URL: amqp://seat:seat@rabbitmq:5672/
-    USER_URL: http://user:8081
-    LIBRARY_GRPC_ADDR: library:9082
+    CONSUL_ADDR: http://consul:8500
+    USER_URL: consul://user
+    OCCUPANCY_URL: consul://occupancy
+    RESERVATION_URL: consul://reservation
+    REVIEW_URL: consul://review
+    LIBRARY_GRPC_ADDR: consul://library
     JWT_SECRET: ${JWT_SECRET:-dev-secret}
     POLL_INTERVAL: ${POLL_INTERVAL:-30}
   depends_on:
     postgres: { condition: service_healthy }
     mongo: { condition: service_healthy }
     rabbitmq: { condition: service_healthy }
+    consul: { condition: service_healthy }
 
 services:
   postgres:
@@ -74,37 +84,52 @@ services:
       interval: 10s
       retries: 10
 
+  # Service registry (ADR-009). UI: http://localhost:8500 shows every instance
+  # and its health. Dev mode keeps no state; services re-register every 30s.
+  consul:
+    image: hashicorp/consul:1.20
+    command: ["agent", "-dev", "-client=0.0.0.0", "-log-level=warn"]
+    ports:
+      - "8500:8500"
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 5s
+      retries: 10
+
   # --- Go services (profile "app"). `restart` brings a crashed service back;
-  # healthchecks report liveness in `docker compose ps` (99% uptime NFR, ADR-008).
+  # healthchecks report liveness in `docker compose ps` (99% uptime NFR, ADR-009).
+  # No host ports except the gateway's, so any service can be scaled:
+  #   docker compose --profile app up -d --scale library=3
+  gateway:
+    <<: *app
+    command: ["/app/gateway"]
+    ports: ["8080:8080"]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"], interval: 10s }
+
   user:
     <<: *app
     command: ["/app/user"]
-    ports: ["8081:8081"]
     healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8081/healthz"], interval: 10s }
 
   library:
     <<: *app
     command: ["/app/library"]
-    ports: ["9082:9082"]
     # gRPC: a TCP check is enough for liveness; grpc.health.v1 is also served for grpcurl/k8s.
     healthcheck: { test: ["CMD", "nc", "-z", "localhost", "9082"], interval: 10s }
 
   occupancy:
     <<: *app
     command: ["/app/occupancy"]
-    ports: ["8083:8083"]
     healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8083/healthz"], interval: 10s }
 
   reservation:
     <<: *app
     command: ["/app/reservation"]
-    ports: ["8084:8084"]
     healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8084/healthz"], interval: 10s }
 
   review:
     <<: *app
     command: ["/app/review"]
-    ports: ["8085:8085"]
     healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8085/healthz"], interval: 10s }
 
 volumes:

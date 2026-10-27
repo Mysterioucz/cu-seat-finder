@@ -1,19 +1,16 @@
-// Server-component fetch helper. Calls backend services directly by absolute URL
+// Server-component fetch helper. Calls the API Gateway directly by absolute URL
 // (the /api/* rewrite in next.config.ts exists for the browser only — server code
 // doesn't need to hop through :3000). Returns null on any failure so pages can
 // render a graceful empty/error state instead of crashing when a backend is down.
 import { ApiError } from "./apiError";
-import { SERVICE_URLS } from "./serviceUrls";
-
-type Service = keyof typeof SERVICE_URLS;
+import { GATEWAY_URL } from "./gatewayUrl";
 
 export async function serverApi<T>(
-  service: Service,
   path: string,
   init: RequestInit = {},
 ): Promise<{ data: T | null; error: ApiError | null }> {
   try {
-    const res = await fetch(`${SERVICE_URLS[service]}${path}`, {
+    const res = await fetch(`${GATEWAY_URL}${path}`, {
       ...init,
       cache: init.cache ?? "no-store",
     });

@@ -14,6 +14,7 @@ import (
 	"github.com/cu-seat-finder/backend/internal/dbx"
 	"github.com/cu-seat-finder/backend/internal/httpx"
 	"github.com/cu-seat-finder/backend/internal/libraryclient"
+	"github.com/cu-seat-finder/backend/internal/registry"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
@@ -47,6 +48,7 @@ func main() {
 	srv.routes(mux)
 	mux.HandleFunc("GET /healthz", httpx.Healthz)
 
+	registry.Register("review", port, registry.HTTP) // ADR-009
 	log.Printf("review service listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, httpx.WithCORS(mux)))
 }

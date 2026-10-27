@@ -21,6 +21,7 @@ flowchart LR
         MQ[["<b>RabbitMQ</b><br/>[Message broker]<br/><small>exchange reservation.events, ADR-007</small>"]]
         PG[("<b>PostgreSQL</b><br/>[RDBMS]<br/><small>schema per service, ADR-006</small>")]
         Mongo[("<b>MongoDB</b><br/>[NoSQL]<br/><small>collection reviews, ADR-006</small>")]
+        Reg{{"<b>Consul</b><br/>[Service registry]<br/><small>instances + health, ADR-009</small>"}}
     end
 
     SSO["<b>CU SSO</b><br/>[External]"]
@@ -45,6 +46,13 @@ flowchart LR
     Res -. "publish reservation.no_show [AMQP]" .-> MQ
     MQ -. "consume [AMQP]" .-> User
 
+    GW -. "lookup healthy instances" .-> Reg
+    Reg -. "health check every 5s" .-> User
+    Reg -.-> Library
+    Reg -.-> Occ
+    Reg -.-> Res
+    Reg -.-> Rev
+
     User --> PG
     Library --> PG
     Occ --> PG
@@ -60,6 +68,6 @@ flowchart LR
     classDef external fill:#999999,stroke:#6b6b6b,color:#fff
     class Customer,Admin person
     class Web,GW,User,Library,Occ,Res,Rev container
-    class MQ,PG,Mongo infra
+    class MQ,PG,Mongo,Reg infra
     class SSO,TS external
     style SF fill:#ffffff,stroke:#444,stroke-dasharray: 5 5

@@ -1,5 +1,6 @@
 // Package svcclient is the plain HTTP client services use to call each other
-// (e.g. Reservation -> Library/User). No service mesh, no retries: dev-scale only.
+// (e.g. Reservation -> User). A consul://name URL is resolved to a healthy
+// instance through the registry on every call (ADR-009). No retries: dev-scale only.
 package svcclient
 
 import (
@@ -8,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/cu-seat-finder/backend/internal/registry"
 )
 
 var httpClient = &http.Client{Timeout: 5 * time.Second}
@@ -15,6 +18,10 @@ var httpClient = &http.Client{Timeout: 5 * time.Second}
 // GetJSON GETs url and decodes a 2xx JSON body into out (out may be nil).
 // It returns the HTTP status code so callers can branch on 404 etc.
 func GetJSON(ctx context.Context, url string, out any) (int, error) {
+	url, err := registry.ResolveURL(ctx, url)
+	if err != nil {
+		return 0, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, err

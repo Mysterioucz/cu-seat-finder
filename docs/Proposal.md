@@ -385,23 +385,31 @@ Accepted
 
 **Context**
 
-The gateway, five services, two databases and a message broker have to find each other. Options: a service registry (Consul, Eureka) with client-side lookup; Kubernetes Services with DNS; or Docker Compose networking, where each container is reached by name and addresses are passed as environment variables. A registry adds a component to operate and a client library in every service, which a fixed set of five services on one host does not need. Kubernetes solves discovery and scaling but is more to learn and operate than the project timeline allows.
+The gateway, five services, two databases and a message broker have to find each other, and the 99% uptime target (Non-Functional Requirements) means a crashed or extra replica of a service must be noticed without a configuration change. Options: Docker Compose DNS, where each container is reached by name; Kubernetes Services with DNS; or a service registry (Consul, Eureka) where instances register themselves and callers look them up. Docker DNS needs nothing extra but knows nothing about health: it keeps returning a crashed container until Compose restarts it, and it balances replicas only by DNS round-robin. Kubernetes solves discovery and scaling but is more to learn and operate than the project timeline allows. Consul runs as one container, has an HTTP API that needs no client library, and checks the health of every instance itself.
 
 **Decision**
 
-Run every container with Docker Compose on one network. Each service is reached by its Compose service name through Docker's built-in DNS, so discovery is done by the platform (server-side discovery): for example LIBRARY_GRPC_ADDR=library:9082 and USER_URL=http://user:8081. Addresses are plain environment variables, so the same binaries run unchanged under Kubernetes Service DNS later. Every service exposes a health check (GET /healthz, or grpc.health.v1 for the Library Service), and Compose restarts a crashed container (restart: unless-stopped).
+Use Consul as the service registry with client-side discovery, and run every container with Docker Compose.
+
+* **Registration.** On start-up every service (and the gateway) registers itself in Consul under its service name, with its container IP, its port and a health check that Consul runs every 5 seconds (GET /healthz over HTTP, or a TCP check on the Library Service's gRPC port). The registration is repeated every 30 seconds, and the instance deregisters itself on shutdown. An instance whose check stays critical for 1 minute is removed (internal/registry).
+* **Lookup.** Callers address services by name, as consul://user or consul://library, instead of host:port. The registry client asks Consul for the instances whose check is passing, caches the answer for one second, and picks one round-robin. The gateway's reverse proxy picks an instance per request and retries a GET once on another instance if the connection is refused. gRPC clients use a consul:// resolver, so gRPC balances across Library instances on its own.
+* **Scaling.** Only the gateway publishes a port (8080) for application traffic, so any service can be scaled with docker compose --profile app up -d --scale library=3, and the new instances receive traffic as soon as their health check passes.
+* **Infrastructure.** PostgreSQL, MongoDB, RabbitMQ and Consul itself are single instances and are still reached by their Compose DNS name.
+* **Restart.** Compose restarts a crashed container (restart: unless-stopped); Consul stops routing to it in the meantime.
+
+A plain address (http://localhost:8081) bypasses the registry, so make run starts the services locally without Consul.
 
 **Status**
 
-Accepted
+Accepted (replaces the earlier decision to rely on Docker DNS alone)
 
 **Consequences**
 
-* No registry to run; discovery is a DNS lookup handled by Docker.
-* No client-side load balancing or health-aware routing: requests to a crashed container fail until Compose restarts it.
-* Several replicas of one service are balanced only by Docker DNS round-robin, and everything runs on one host.
-* The environment variables are the contract between services; renaming a service means updating its variable everywhere it is used.
-* Moving to Kubernetes later needs Deployment and Service manifests, but no code changes.
+* Health-aware routing: an instance that fails its check stops receiving requests within about 5 seconds, without a restart or a configuration change.
+* Several replicas of a service are load-balanced by the caller, round-robin, and the Consul UI (http://localhost:8500) shows every instance and its health.
+* Consul is one more container to run and is now on the critical path. It runs in dev mode with no persisted state, so services re-register every 30 seconds after a Consul restart; callers keep their last cached answer only for one second.
+* Every service depends on the small internal/registry package; there is no external client library.
+* Everything still runs on one host, so a host failure takes down all replicas. Moving to Kubernetes later would replace Consul with Service DNS and health probes; the consul:// addresses become plain service names.
 
 # **Microservice architecture**
 
@@ -443,7 +451,7 @@ Each row below lists a service, the operations it exposes, and which other servi
 
 | Service | Operation | Collaboration |
 | :---- | :---- | :---- |
-| **API Gateway**<br>(Go, port 8080) | route()<br>verifyJWT()<br>translateLibraryCall()<br>rateLimit() | (REST) forwards /api/auth and /api/users to User, /api/occupancy to Occupancy, /api/reservations to Reservation, /api/reviews to Review<br>(gRPC) translates /api/libraries and /api/rooms into LibraryService calls<br>Upstream addresses come from environment variables resolved by Docker DNS (ADR-009) |
+| **API Gateway**<br>(Go, port 8080) | route()<br>verifyJWT()<br>translateLibraryCall()<br>rateLimit() | (REST) forwards /api/auth and /api/users to User, /api/occupancy to Occupancy, /api/reservations to Reservation, /api/reviews to Review<br>(gRPC) translates /api/libraries and /api/rooms into LibraryService calls<br>Upstream instances are looked up in the Consul registry per request (ADR-009) |
 | **User Service**<br>(REST) | registerUser()<br>login()<br>adminLogin()<br>logout()<br>editProfile()<br>viewProfile()<br>applyPenalty()<br>listPenalized()<br>unbanUser() | Auth interface: mock OIDC identity provider; swapped for CU SSO once credentials are issued (ADR-004)<br>(async) Reservation Service, via RabbitMQ: consumes reservation.no_show and records a 7-day penalty keyed by reservation_id (ADR-007)<br>Data store: PostgreSQL schema users |
 | **Library Service**<br>(gRPC) | ListLibraries()<br>GetLibrary()<br>CreateLibrary()<br>UpdateLibrary()<br>DeleteLibrary()<br>ListRooms()<br>GetRoom()<br>CreateRoom()<br>UpdateRoom()<br>DeleteRoom() | Source of truth for library, floor, zone and meeting room master data, exposed as LibraryService in proto/library/v1/library.proto<br>Writes require an admin JWT in gRPC metadata<br>Data store: PostgreSQL schema library |
 | **Occupancy Service**<br>(REST) | pollTurnstileData()<br>calculateOccupancy()<br>getOccupancy() | (gRPC) Library Service: ListLibraries(): polls only libraries that exist<br>Turnstile source behind an interface; a mock generator until access is granted (ADR-005)<br>Data store: PostgreSQL schema occupancy |
@@ -452,18 +460,24 @@ Each row below lists a service, the operations it exposes, and which other servi
 
 # **Step 4 API Gateway routing and service discovery**
 
-All client traffic enters through the API Gateway (ADR-008). The gateway finds each service by its Docker Compose name through Docker's built-in DNS (ADR-009); the address of every upstream is an environment variable, so no service registry is needed.
+All client traffic enters through the API Gateway (ADR-008) at port 8080, the only service port published to the host. The gateway does not know where services run: for every request it asks the Consul registry for a healthy instance of the upstream service and picks one round-robin (ADR-009).
 
-| Path prefix | Upstream (DNS name) | Protocol | Access at the gateway |
+| Path prefix | Upstream (registry name) | Protocol | Access at the gateway |
 | :---- | :---- | :---- | :---- |
-| /api/auth/\* | user:8081 | REST | Public |
-| /api/users/\* | user:8081 | REST | JWT required; penalty admin routes need role admin |
-| /api/occupancy/\* | occupancy:8083 | REST | Public |
-| /api/reservations/\* | reservation:8084 | REST | JWT required; accept, reject and check-in need role admin |
-| /api/reviews/\* | review:8085 | REST | GET public; writes need JWT; moderation needs role admin |
-| /api/libraries/\*<br>/api/rooms/\* | library:9082 | gRPC (translated by the gateway) | GET public; create, update and delete need role admin |
+| /api/auth/\* | consul://user (port 8081) | REST | Public |
+| /api/users/\* | consul://user (port 8081) | REST | JWT required; penalty admin routes need role admin |
+| /api/occupancy/\* | consul://occupancy (port 8083) | REST | Public |
+| /api/reservations/\* | consul://reservation (port 8084) | REST | JWT required; listing all, accept, reject and check-in need role admin |
+| /api/reviews/\* | consul://review (port 8085) | REST | GET public; writes need JWT; flagged list and moderation need role admin |
+| /api/libraries/\*<br>/api/rooms/\* | consul://library (port 9082) | gRPC (translated by the gateway) | GET public; create, update and delete need role admin |
 
-Service-to-service calls inside the network use the same mechanism: Reservation, Review and Occupancy reach the Library Service at LIBRARY_GRPC_ADDR=library:9082, Reservation and Review reach the User Service at USER_URL=http://user:8081, and the data stores are reached at postgres:5432, mongo:27017 and rabbitmq:5672. Next.js reaches the gateway at GATEWAY_URL=http://gateway:8080. A health check on every container (GET /healthz, grpc.health.v1 for Library) lets Compose report and restart unhealthy services.
+The gateway answers 401 for a missing or invalid token and 403 for the wrong role before forwarding, 503 when the registry has no healthy instance, 504 when an upstream does not answer within 5 seconds, and 429 when a client exceeds 50 requests per second.
+
+Service-to-service calls use the same registry: Reservation, Review and Occupancy reach the Library Service at LIBRARY_GRPC_ADDR=consul://library, and Reservation and Review reach the User Service at USER_URL=consul://user. Next.js reaches the gateway at GATEWAY_URL=http://localhost:8080. The data stores and the broker are single instances reached by Compose DNS name (postgres:5432, mongo:27017, rabbitmq:5672, consul:8500).
+
+**Registration and health.** Each instance registers itself on start-up with a health check that Consul runs every 5 seconds, and deregisters on shutdown. Consul returns only instances whose check is passing, so a crashed replica stops receiving traffic while Compose restarts it.
+
+**Scaling.** docker compose --profile app up -d --scale library=3 starts two more Library instances; they register, pass their check and share the load with no configuration change. Verified on 27 Oct 2026: with three Library instances the gateway spread requests evenly across all three, and after one instance was killed every following request still returned 200.
 
 # **System Architecture (C4 Model)**
 
@@ -481,7 +495,7 @@ CU SeatFinder is used by customers (students and staff) and admins (library staf
 ![Figure 2: C4 Level 2, Containers. Thick lines are gRPC; dotted lines are asynchronous events through RabbitMQ (ADR-007).](diagrams/c4-2-container.png)
 *Figure 2: C4 Level 2, Containers. Thick lines are gRPC; dotted lines are asynchronous events through RabbitMQ (ADR-007).*
 
-The Web App renders pages and sends every API call to the API Gateway (ADR-008), which routes REST calls to four services and translates library calls to gRPC. PostgreSQL holds one schema per service and MongoDB holds reviews only (ADR-006). The services find each other through Docker DNS (ADR-009).
+The Web App renders pages and sends every API call to the API Gateway (ADR-008), which routes REST calls to four services and translates library calls to gRPC. PostgreSQL holds one schema per service and MongoDB holds reviews only (ADR-006). The gateway and the services find each other through the Consul service registry (ADR-009).
 
 ### **Level 3: Components of the Reservation Service**
 
@@ -576,7 +590,7 @@ Each risk is rated for likelihood and impact from 1 (Low) to 3 (High); score = l
 | ID | Risk | Likelihood | Impact | Score | Mitigation |
 | :---- | :---- | :---- | :---- | :---- | :---- |
 | R1 | Turnstile data access is never granted, so occupancy stays simulated | High (3) | High (3) | 9 | Turnstile source behind an interface with a mock generator (ADR-005); the demo states the data is simulated; access requested early |
-| R2 | The API Gateway fails or becomes the bottleneck, so every request fails | Medium (2) | High (3) | 6 | Stateless gateway with health check and automatic restart (ADR-009); capacity measured in the stress test; can run several replicas |
+| R2 | The API Gateway fails or becomes the bottleneck, so every request fails | Medium (2) | High (3) | 6 | Stateless gateway with health check and automatic restart; services behind it can be scaled and are health-checked by Consul (ADR-009); capacity measured in the stress test |
 | R3 | CU SSO credentials are not issued in time, or SSO is down | High (3) | Medium (2) | 6 | Identity provider behind an interface; mock OIDC provider for the demo (ADR-004) |
 | R4 | Free-tier limits of Prisma Postgres or MongoDB Atlas (connections, storage) are hit during tests or the demo | Medium (2) | Medium (2) | 4 | Run load tests against local containers; cap connection pool sizes; daily backups |
 | R5 | The team is new to Go, and the gateway and load tests are still to be built before the presentation | Medium (2) | Medium (2) | 4 | Shared checklist with owners; build the gateway first; freeze features one week before the presentation |
@@ -600,8 +614,8 @@ How each term-project requirement in the course syllabus is covered by this docu
 | At least one REST service | ADR-003; Step 3 | User, Occupancy, Reservation, Review | Implemented |
 | At least one gRPC service | ADR-003; Step 3 | Library Service (proto/library/v1/library.proto) | Implemented |
 | At least one message-broker service | ADR-007; Figure 7 | RabbitMQ: Reservation publishes, User consumes | Implemented |
-| API Gateway | ADR-008; Step 4 | backend/cmd/gateway | To do |
-| Service discovery | ADR-009; Step 4 | docker-compose.yml (Docker DNS, env vars, health checks) | Implemented |
+| API Gateway | ADR-008; Step 4 | backend/cmd/gateway | Implemented |
+| Service discovery | ADR-009; Step 4 | Consul registry: backend/internal/registry, docker-compose.yml | Implemented |
 | RDBMS and NoSQL | ADR-006 | PostgreSQL (4 services), MongoDB (Review) | Implemented |
 | Load test, at least 2 types | Load Test Plan | loadtest/ (k6) | To do |
 | Risk matrix, at least 3 issues | Risk Matrix | None (document only) | Documented |

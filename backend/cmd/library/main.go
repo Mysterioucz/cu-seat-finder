@@ -11,6 +11,7 @@ import (
 
 	pb "github.com/cu-seat-finder/backend/gen/library/v1"
 	"github.com/cu-seat-finder/backend/internal/dbx"
+	"github.com/cu-seat-finder/backend/internal/registry"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -48,8 +49,9 @@ func main() {
 	g := grpc.NewServer(grpc.UnaryInterceptor(adminOnly(jwtSecret)))
 	pb.RegisterLibraryServiceServer(g, &server{db: pool})
 	reflection.Register(g)
-	healthpb.RegisterHealthServer(g, health.NewServer()) // grpc.health.v1, for probes (ADR-008)
+	healthpb.RegisterHealthServer(g, health.NewServer()) // grpc.health.v1: Consul's health check (ADR-009)
 
+	registry.Register("library", port, registry.GRPC)
 	log.Printf("library gRPC service listening on :%s", port)
 	log.Fatal(g.Serve(lis))
 }
