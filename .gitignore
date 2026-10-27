@@ -4,3 +4,4 @@ docker-compose.override.yml
 *.pdf
 backups/
 loadtest/results/
+.~lock.*#
