@@ -84,16 +84,6 @@ Results from 5 Nov 2026: every check passed, and no breaking point was found up 
 400 users on one machine. See the Load Test Plan and NFR Verification sections in
 [docs/Proposal.md](docs/Proposal.md).
 
-## Not built yet
-
-- Real CU SSO (OIDC) sign-in
-- Choosing a room on a map
-- Scanning QR codes with a camera
-- Photos in reviews
-- Profile activity
-- A daily backup schedule; `make backup` works but nothing runs it automatically
-- PDPA consent
-
 ## Repository layout
 
 ```
