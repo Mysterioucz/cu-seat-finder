@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import type { FormEvent } from "react";
+import { api, ApiError } from "@/lib/api";
 import { useT } from "@/lib/LangContext";
 import type { PenalizedUser, Reservation, Review } from "@/lib/types";
 import Button from "./Button";
@@ -24,6 +25,11 @@ export default function AdminDashboard() {
   const [pending, setPending] = useState<Reservation[] | null>(null);
   const [pendingError, setPendingError] = useState(false);
   const [pendingBusy, setPendingBusy] = useState<string | null>(null);
+
+  const [reference, setReference] = useState("");
+  const [checkinBusy, setCheckinBusy] = useState(false);
+  const [checkedIn, setCheckedIn] = useState<Reservation | null>(null);
+  const [checkinError, setCheckinError] = useState<string | null>(null);
 
   const [flagged, setFlagged] = useState<Review[] | null>(null);
   const [flaggedError, setFlaggedError] = useState(false);
@@ -90,6 +96,25 @@ export default function AdminDashboard() {
     }
   }
 
+  async function checkIn(e: FormEvent) {
+    e.preventDefault();
+    setCheckinBusy(true);
+    setCheckedIn(null);
+    setCheckinError(null);
+    try {
+      const res = await api<Reservation>("/api/reservations/checkin", {
+        method: "POST",
+        body: JSON.stringify({ reference: reference.trim().toUpperCase() }),
+      });
+      setCheckedIn(res);
+      setReference("");
+    } catch (err) {
+      setCheckinError(t(err instanceof ApiError && err.status === 409 ? "admin.checkinFailed" : "error.generic"));
+    } finally {
+      setCheckinBusy(false);
+    }
+  }
+
   async function moderate(id: string, hidden: boolean) {
     setReviewBusy(id);
     try {
@@ -141,6 +166,36 @@ export default function AdminDashboard() {
               ))}
             </div>
           )
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">{t("admin.checkin")}</h2>
+        <form onSubmit={checkIn} className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface p-4">
+          <label className="flex min-w-48 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+            {t("admin.checkinHint")}
+            <input
+              required
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+              placeholder="CU-7F3K9Q"
+              autoComplete="off"
+              className="min-h-11 rounded-lg border border-border bg-surface px-3 py-2 font-mono text-sm text-foreground outline-none focus-visible:border-brand"
+            />
+          </label>
+          <Button type="submit" loading={checkinBusy}>
+            {t("admin.checkinSubmit")}
+          </Button>
+        </form>
+        {checkedIn && (
+          <p role="status" className="mt-2 text-sm font-medium text-density-low-fg">
+            {t("admin.checkinDone", { reference: checkedIn.reference ?? "", id: checkedIn.room_id })}
+          </p>
+        )}
+        {checkinError && (
+          <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+            {checkinError}
+          </p>
         )}
       </section>
 

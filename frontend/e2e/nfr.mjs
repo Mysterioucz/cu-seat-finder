@@ -1,5 +1,5 @@
 // UI NFRs (Proposal: Operational, Usability, Cultural) against a running app:
-//   pnpm dev  (with the backend from `make up`), then  pnpm test:nfr
+//   `make up` (or pnpm dev with the backend running), then  pnpm test:nfr
 //   - mobile: every page fits a 375 px phone screen, no horizontal scroll
 //   - Thai UI by default, English via the EN toggle
 //   - steps: user actions from sign-in to a confirmed reservation (recorded)

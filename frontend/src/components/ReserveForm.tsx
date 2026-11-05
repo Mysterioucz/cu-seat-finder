@@ -14,6 +14,13 @@ const DURATIONS = [30, 60, 90, 120] as const;
 const fieldClass =
   "min-h-11 rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus-visible:border-brand";
 
+// Current local time as datetime-local wants it: the input has no time zone,
+// so a UTC string would let Thai users pick up to 7 hours in the past.
+function localDateTimeNow() {
+  const now = new Date();
+  return new Date(now.getTime() - now.getTimezoneOffset() * 60e3).toISOString().slice(0, 16);
+}
+
 export default function ReserveForm({ roomId }: { roomId: string }) {
   const { t, lang } = useT();
 
@@ -59,6 +66,8 @@ export default function ReserveForm({ roomId }: { roomId: string }) {
         setError(t("reserve.penalty"));
       } else if (err instanceof ApiError && err.code === "forbidden") {
         setError(t("reserve.customerOnly"));
+      } else if (err instanceof ApiError && err.code === "start_in_past") {
+        setError(t("reserve.startInPast"));
       } else {
         setError(err instanceof ApiError ? err.message : t("error.network"));
       }
@@ -101,7 +110,7 @@ export default function ReserveForm({ roomId }: { roomId: string }) {
               type="datetime-local"
               value={start}
               onChange={(e) => setStart(e.target.value)}
-              min={new Date().toISOString().slice(0, 16)}
+              min={localDateTimeNow()}
               className={fieldClass}
             />
           </label>

@@ -25,7 +25,7 @@ Copy `.env.example` to `.env` to override defaults (DB URL, Mongo URL, JWT secre
 ## Run in Docker (ADR-008, ADR-009)
 
 ```
-make up       # infra + Consul + gateway + all 5 services as containers (compose profile "app")
+make up       # infra + Consul + gateway + all 5 services + web app (:3000) as containers (compose profile "app")
 make down     # stop them
 make backup   # pg_dump + mongodump into ../backups/<timestamp>/ (cron it daily)
 ```
@@ -38,7 +38,8 @@ http://localhost:8500. Infra (`postgres`, `mongo`, `rabbitmq`) is still reached 
 Compose DNS name. With `make run` the addresses are plain `localhost` ones and Consul
 is not used.
 
-Only the gateway (http://localhost:8080) is published, so any service can be scaled:
+Only the web app (http://localhost:3000) and the gateway (http://localhost:8080) are
+published, so any service can be scaled:
 
 ```
 docker compose --profile app up -d --scale library=3   # new instances get traffic once healthy
@@ -98,6 +99,16 @@ The sweeper runs once a minute.
 Schemas are created with `CREATE TABLE IF NOT EXISTS` and never altered, so
 after pulling a schema change (such as this one), reset dev data with
 `docker compose down -v && make db`; services re-seed on startup.
+
+## Live demo data
+
+```
+make demo-seed                 # sample reviews + a pending booking for the admin to accept
+make demo-ticket               # new student + accepted booking inside its check-in window (prints the reference)
+make demo-noshow REF=CU-XXXXXX # expire the check-in deadline; the penalty appears within a minute
+```
+
+Check in from the Booking check-in box on the admin page (http://localhost:3000/admin).
 
 ## Library gRPC demo (grpcurl)
 

@@ -17,13 +17,20 @@ type activeBooking struct {
 }
 
 // quotaCheck applies the UC-02 quota subflow: max 2 active (pending/accepted)
-// bookings, max 180 booked minutes on the same calendar day as the new booking,
+// bookings that have not ended yet, max 180 booked minutes on the same calendar
+// day as the new booking (ended bookings still count towards that day),
 // blocked entirely while the customer has an active penalty.
-func quotaCheck(existing []activeBooking, newStart time.Time, newDurationMinutes int, activePenalty bool) error {
+func quotaCheck(existing []activeBooking, newStart time.Time, newDurationMinutes int, activePenalty bool, now time.Time) error {
 	if activePenalty {
 		return errPenalty
 	}
-	if len(existing)+1 > 2 {
+	active := 0
+	for _, b := range existing {
+		if b.StartTime.Add(time.Duration(b.DurationMinutes) * time.Minute).After(now) {
+			active++
+		}
+	}
+	if active+1 > 2 {
 		return errQuotaExceeded
 	}
 	sameDayMinutes := newDurationMinutes

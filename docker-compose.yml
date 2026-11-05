@@ -1,5 +1,5 @@
 # `make db`  -> infra only (postgres, mongo, rabbitmq, consul); run services with `make run`.
-# `make up`  -> infra + gateway + all 5 services in containers (profile "app").
+# `make up`  -> infra + gateway + all 5 services + web app in containers (profile "app").
 #
 # Service discovery (ADR-009): every service registers itself in Consul with a
 # health check, and callers address services by name (consul://library,
@@ -8,14 +8,13 @@
 # Infrastructure (postgres, mongo, rabbitmq, consul) is single-instance and
 # still reached by Docker DNS name.
 #
-# Only the API Gateway (:8080) is published for application traffic (ADR-008);
-# the services listen inside the Docker network only.
+# Only the web app (:3000) and the API Gateway (:8080) are published for
+# application traffic (ADR-008); the services listen inside the Docker network only.
 
 # Shared settings for the Go services. Every service gets the same env; each
 # reads only what it needs.
 x-app: &app
   build: ./backend
-  image: seatfinder-backend
   profiles: ["app"]
   restart: unless-stopped
   environment:
@@ -131,6 +130,20 @@ services:
     <<: *app
     command: ["/app/review"]
     healthcheck: { test: ["CMD", "wget", "-qO-", "http://localhost:8085/healthz"], interval: 10s }
+
+  # Next.js (ADR-001): serves pages and sends every /api/* call to the gateway.
+  frontend:
+    build:
+      context: ./frontend
+      args: { GATEWAY_URL: "http://gateway:8080" }
+    image: seatfinder-frontend
+    profiles: ["app"]
+    restart: unless-stopped
+    environment:
+      GATEWAY_URL: http://gateway:8080
+    ports: ["3000:3000"]
+    depends_on: [gateway]
+    healthcheck: { test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"], interval: 10s }
 
 volumes:
   seatfinder-pgdata:

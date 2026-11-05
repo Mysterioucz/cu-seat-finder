@@ -54,10 +54,12 @@ func accessFor(method, path string) access {
 
 	switch {
 	case under("/api/users"):
-		if path == "/api/users/penalized" || strings.HasSuffix(path, "/unban") {
-			return admin
+		// Services read other users' profiles (viewProfile) directly, not through
+		// the gateway, so a client only ever needs its own.
+		if path == "/api/users/me" {
+			return signedIn
 		}
-		return signedIn
+		return admin
 
 	case under("/api/reservations"):
 		if path == "/api/reservations" && read || path == "/api/reservations/checkin" ||

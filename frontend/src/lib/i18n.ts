@@ -137,6 +137,10 @@ const dict = {
     th: "เฉพาะบัญชีนักศึกษาเท่านั้นที่จองห้องได้ แอดมินไม่สามารถจองได้",
     en: "Only student accounts can book rooms. Admins can't make bookings.",
   },
+  "reserve.startInPast": {
+    th: "เวลาเริ่มผ่านไปแล้ว กรุณาเลือกเวลาใหม่",
+    en: "That start time has passed. Please choose a later time.",
+  },
   "reserve.notFound": { th: "ไม่พบห้องนี้", en: "Room not found." },
 
   "reservations.title": { th: "การจองของฉัน", en: "My reservations" },
@@ -158,6 +162,17 @@ const dict = {
   "admin.accept": { th: "ยืนยัน", en: "Accept" },
   "admin.reject": { th: "ปฏิเสธ", en: "Reject" },
   "admin.room": { th: "ห้อง {id}", en: "Room {id}" },
+  "admin.checkin": { th: "เช็คอินการจอง", en: "Booking check-in" },
+  "admin.checkinHint": {
+    th: "สแกน QR หรือพิมพ์รหัสอ้างอิงจากตั๋วของผู้จอง",
+    en: "Scan the QR code or type the reference from the booking ticket.",
+  },
+  "admin.checkinSubmit": { th: "เช็คอิน", en: "Check in" },
+  "admin.checkinDone": { th: "เช็คอิน {reference} แล้ว · ห้อง {id}", en: "{reference} checked in · Room {id}" },
+  "admin.checkinFailed": {
+    th: "เช็คอินไม่ได้: ไม่พบการจองที่ยืนยันแล้ว เคยเช็คอินแล้ว หรืออยู่นอกช่วงเวลาเช็คอิน",
+    en: "Can't check in: no accepted booking found, already checked in, or outside the check-in window.",
+  },
   "admin.reviews": { th: "จัดการรีวิว", en: "Review moderation" },
   "admin.noFlagged": { th: "ไม่มีรีวิวที่ถูกรายงาน", en: "No flagged reviews." },
   "admin.hide": { th: "ซ่อน", en: "Hide" },

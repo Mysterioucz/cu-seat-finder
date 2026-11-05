@@ -48,6 +48,10 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusBadRequest, "bad_request", "room_id, start_time (RFC3339), duration_minutes required")
 		return
 	}
+	if !startTime.After(time.Now()) {
+		httpx.WriteError(w, http.StatusUnprocessableEntity, "start_in_past", "start_time must be in the future")
+		return
+	}
 	endTime := startTime.Add(time.Duration(req.DurationMinutes) * time.Minute)
 	ctx := r.Context()
 
@@ -76,7 +80,7 @@ func (s *server) create(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, http.StatusInternalServerError, "internal", "could not load existing bookings")
 		return
 	}
-	switch quotaCheck(existing, startTime, req.DurationMinutes, prof.ActivePenalty) {
+	switch quotaCheck(existing, startTime, req.DurationMinutes, prof.ActivePenalty, time.Now()) {
 	case errPenalty:
 		httpx.WriteError(w, http.StatusForbidden, "penalty", "account has an active penalty")
 		return

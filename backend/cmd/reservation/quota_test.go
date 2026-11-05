@@ -9,8 +9,11 @@ func day(hour int) time.Time {
 	return time.Date(2026, 1, 15, hour, 0, 0, 0, time.UTC)
 }
 
+// beforeAll is a "now" earlier than every booking in these tests.
+var beforeAll = day(0)
+
 func TestQuotaCheckBlocksOnPenalty(t *testing.T) {
-	if err := quotaCheck(nil, day(9), 60, true); err != errPenalty {
+	if err := quotaCheck(nil, day(9), 60, true, beforeAll); err != errPenalty {
 		t.Fatalf("expected errPenalty, got %v", err)
 	}
 }
@@ -20,7 +23,7 @@ func TestQuotaCheckBlocksThirdActiveBooking(t *testing.T) {
 		{StartTime: day(9), DurationMinutes: 30},
 		{StartTime: day(10), DurationMinutes: 30},
 	}
-	if err := quotaCheck(existing, day(14), 30, false); err != errQuotaExceeded {
+	if err := quotaCheck(existing, day(14), 30, false, beforeAll); err != errQuotaExceeded {
 		t.Fatalf("expected errQuotaExceeded for 3rd active booking, got %v", err)
 	}
 }
@@ -30,7 +33,7 @@ func TestQuotaCheckBlocksOverDailyMinutes(t *testing.T) {
 		{StartTime: day(9), DurationMinutes: 150},
 	}
 	// same day, 150 + 60 = 210 > 180
-	if err := quotaCheck(existing, day(13), 60, false); err != errQuotaExceeded {
+	if err := quotaCheck(existing, day(13), 60, false, beforeAll); err != errQuotaExceeded {
 		t.Fatalf("expected errQuotaExceeded for >180 min/day, got %v", err)
 	}
 }
@@ -40,15 +43,42 @@ func TestQuotaCheckAllowsDifferentDay(t *testing.T) {
 		{StartTime: day(9), DurationMinutes: 150},
 	}
 	nextDay := day(9).Add(24 * time.Hour)
-	if err := quotaCheck(existing, nextDay, 60, false); err != nil {
+	if err := quotaCheck(existing, nextDay, 60, false, beforeAll); err != nil {
 		t.Fatalf("expected no error for a different day, got %v", err)
 	}
 }
 
 func TestQuotaCheckAllowsWithinLimits(t *testing.T) {
 	existing := []activeBooking{{StartTime: day(9), DurationMinutes: 60}}
-	if err := quotaCheck(existing, day(11), 60, false); err != nil {
+	if err := quotaCheck(existing, day(11), 60, false, beforeAll); err != nil {
 		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestQuotaCheckIgnoresEndedBookings(t *testing.T) {
+	existing := []activeBooking{
+		{StartTime: day(9).Add(-48 * time.Hour), DurationMinutes: 60},
+		{StartTime: day(9).Add(-24 * time.Hour), DurationMinutes: 60},
+	}
+	if err := quotaCheck(existing, day(14), 60, false, day(9)); err != nil {
+		t.Fatalf("expected ended bookings not to count as active, got %v", err)
+	}
+}
+
+func TestQuotaCheckCountsBookingStillInProgress(t *testing.T) {
+	existing := []activeBooking{
+		{StartTime: day(8), DurationMinutes: 120}, // ends at 10:00
+		{StartTime: day(11), DurationMinutes: 30},
+	}
+	if err := quotaCheck(existing, day(14), 30, false, day(9)); err != errQuotaExceeded {
+		t.Fatalf("expected errQuotaExceeded while a booking is in progress, got %v", err)
+	}
+}
+
+func TestQuotaCheckEndedBookingsStillCountTowardsDailyMinutes(t *testing.T) {
+	existing := []activeBooking{{StartTime: day(8), DurationMinutes: 150}} // ended at 10:30
+	if err := quotaCheck(existing, day(13), 60, false, day(12)); err != errQuotaExceeded {
+		t.Fatalf("expected errQuotaExceeded for >180 min/day, got %v", err)
 	}
 }
 

@@ -16,8 +16,10 @@ The `/api/reviews` API is unchanged, so the frontend needed no changes.
 ## Run
 
 ```bash
-cd backend && make up                 # everything in Docker: gateway :8080, Consul UI :8500
-# or: cd backend && make db && make run   (services on the host, no Consul)
+cd backend && make up                 # everything in Docker: app :3000, gateway :8080, Consul UI :8500
+
+# or, to develop on the host (no Consul):
+cd backend && make db && make run
 cd frontend && pnpm install && pnpm dev
 ```
 

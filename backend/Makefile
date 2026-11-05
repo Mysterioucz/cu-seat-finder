@@ -10,13 +10,13 @@ RABBITMQ_URL ?= amqp://seat:seat@localhost:5672/
 
 export DATABASE_URL MONGO_URL JWT_SECRET USER_URL LIBRARY_GRPC_ADDR POLL_INTERVAL RABBITMQ_URL
 
-.PHONY: db up down backup run test build proto loadtest stresstest nfr-security nfr-resilience
+.PHONY: db up down backup run test build proto loadtest stresstest nfr-security nfr-resilience demo-seed demo-ticket demo-noshow
 
 db:
 	cd .. && docker compose up -d
 
-# Infra + gateway + all 5 services in containers; they find each other through Consul (ADR-009).
-# Only the gateway is published: http://localhost:8080. Registry UI: http://localhost:8500.
+# Infra + gateway + all 5 services + web app in containers; the backend finds itself through Consul (ADR-009).
+# App: http://localhost:3000. Gateway: http://localhost:8080. Registry UI: http://localhost:8500.
 up:
 	cd .. && docker compose --profile app up -d --build
 
@@ -40,6 +40,16 @@ nfr-security:
 
 nfr-resilience:
 	../loadtest/resilience.sh
+
+# Live-demo data (scripts/demo.sh): make demo-noshow REF=CU-XXXXXX
+demo-seed:
+	./scripts/demo.sh seed
+
+demo-ticket:
+	./scripts/demo.sh ticket
+
+demo-noshow:
+	./scripts/demo.sh noshow $(REF)
 
 build:
 	go build ./...

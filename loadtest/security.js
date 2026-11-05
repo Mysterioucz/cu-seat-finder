@@ -25,6 +25,7 @@ const ROUTES = [
   ['POST', '/api/reviews', 'signedIn'],
   ['POST', `/api/reservations/${X}/cancel`, 'signedIn'],
   ['GET', '/api/users/penalized', 'admin'],
+  ['GET', `/api/users/${X}`, 'admin'],
   ['POST', `/api/users/${X}/unban`, 'admin'],
   ['GET', '/api/reservations', 'admin'],
   ['POST', `/api/reservations/${X}/accept`, 'admin'],
