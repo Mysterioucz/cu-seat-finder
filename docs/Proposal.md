@@ -40,7 +40,7 @@ University students lack real-time visibility into study space availability acro
 | Relationships:<br>Required by UC-02 Reserve Meeting Room and UC-04 Review Library, which need a signed-in user. |  |
 | Precondition:<br>Customer holds a university account; admin holds an admin account created by the team. |  |
 | Postcondition:<br>A JWT session carrying the user's role (customer or admin) is issued; after sign-out the session is cleared. |  |
-| Normal Flow of Events:<br>1. User opens the sign-in page.<br>2. Customer chooses "Sign in with CU account"; the User Service verifies the identity with the university IdP (a mock OIDC provider during development, ADR-004).<br>3. On first sign-in, the system creates the customer's profile.<br>4. The User Service issues a JWT containing the user ID and role.<br>5. The app stores the session; every later request sends it to the API Gateway, which verifies it before routing (ADR-008).<br>6. User taps "Sign out" and the session is cleared. |  |
+| Normal Flow of Events:<br>1. User opens the sign-in page.<br>2. Customer chooses "Sign in with CU account"; the User Service verifies the identity with the university IdP (a mock OIDC provider during development, ADR-004). Not yet implemented: real OIDC sign-in with CU SSO; the current mock accepts a student ID with no password.<br>3. On first sign-in, the system creates the customer's profile.<br>4. The User Service issues a JWT containing the user ID and role.<br>5. The app stores the session; every later request sends it to the API Gateway, which verifies it before routing (ADR-008).<br>6. User taps "Sign out" and the session is cleared. |  |
 | Subflows:<br>Admin Sign-in: Admin enters email and password; the User Service checks the bcrypt password hash and issues a JWT with role admin. |  |
 | Alternate/Exceptional Flow:<br>Invalid Credentials: The system shows an error and the user stays on the sign-in page.<br>Expired or Invalid Token: The API Gateway rejects the request with 401 and the app returns the user to the sign-in page.<br>Penalized Account: Sign-in succeeds, but booking is blocked while a no-show penalty is active (UC-02). |  |
 
@@ -74,9 +74,9 @@ University students lack real-time visibility into study space availability acro
 | Relationships:<br>Depends on Library Database Service. |  |
 | Precondition:<br>Customer is authenticated/logged in; target meeting room is in "Available" status. |  |
 | Postcondition:<br>Meeting room status changes to "Reserved"; booking confirmation ticket/QR code is issued with a check-in countdown timer. |  |
-| Normal Flow of Events:<br>1. Customer selects an available meeting room on the map.<br>2. Customer inputs reservation details (start time, duration).<br>3. System verifies booking eligibility against quota and daily time limits.<br>4. System prompts customer to confirm booking details.<br>5. Customer confirms reservation.<br>6. Admin accepts the reservation.<br>7. System locks meeting room status to "Reserved" and generates a booking reference/QR code. |  |
+| Normal Flow of Events:<br>1. Customer selects an available meeting room on the map (not yet implemented: rooms are currently chosen from a list).<br>2. Customer inputs reservation details (start time, duration); the start time must be in the future.<br>3. System verifies booking eligibility against quota and daily time limits.<br>4. System prompts customer to confirm booking details.<br>5. Customer confirms reservation.<br>6. Admin accepts the reservation.<br>7. System locks meeting room status to "Reserved" and generates a booking reference/QR code. |  |
 | Subflows:<br>Quota Check: System verifies if the customer has existing active bookings or active penalties. |  |
-| Alternate/Exceptional Flow:<br>Booking Conflict: If another user books the meeting room simultaneously, the system prompts the customer to select a different meeting room.<br>Limit Reached: If the customer exceeds daily booking hours or active booking quotas, the system blocks the transaction and displays a limit error message. |  |
+| Alternate/Exceptional Flow:<br>Booking Conflict: If another user books the meeting room simultaneously, the system prompts the customer to select a different meeting room.<br>Limit Reached: If the customer exceeds daily booking hours or active booking quotas, the system blocks the transaction and displays a limit error message.<br>Start Time in the Past: The system rejects a booking whose start time is not in the future. |  |
 
 ### **UC-03: Filter Empty Libraries**
 
@@ -108,7 +108,7 @@ University students lack real-time visibility into study space availability acro
 | Relationships:<br>None. |  |
 | Precondition:<br>Customer is authenticated/logged in. |  |
 | Postcondition:<br>Review is posted, library average rating is recalculated, and review is flagged for admin moderation if needed. |  |
-| Normal Flow of Events:<br>1. Customer navigates to a library's profile page and selects "Write Review".<br>2. Customer selects star rating and specific tags (e.g., Noise Level, Wi-Fi speed).<br>3. Customer enters text comments and optional photos.<br>4. Customer submits the review.<br>5. System saves the review, updates average score display, and updates customer profile activity. |  |
+| Normal Flow of Events:<br>1. Customer navigates to a library's profile page and selects "Write Review".<br>2. Customer selects star rating and specific tags (e.g., Noise Level, Wi-Fi speed).<br>3. Customer enters text comments and optional photos (not yet implemented: photo attachments).<br>4. Customer submits the review.<br>5. System saves the review, updates average score display, and updates customer profile activity (not yet implemented: profile activity). |  |
 | Subflows:<br>None. |  |
 | Alternate/Exceptional Flow:<br>Inappropriate Content Filter: If text triggers automated profanity/policy filters, the system prompts the customer to revise text before submission. |  |
 
@@ -128,7 +128,7 @@ University students lack real-time visibility into study space availability acro
 
 ### **Meeting Room Reservation System**
 
-* The system shall allow customers to reserve an available meeting room with a start time and duration.
+* The system shall allow customers to reserve an available meeting room with a start time and duration; the start time must be in the future.
 * The system shall enforce booking quotas and daily time limits per customer.
 * The system shall allow admin to accept the customer’s reservation.
 * The system shall issue a booking reference/QR code with a check-in countdown timer upon confirmation.
@@ -157,7 +157,7 @@ University students lack real-time visibility into study space availability acro
 ### **Operational**
 
 * The system shall display properly on mobile devices.
-* The system shall back up occupancy, reservation, and review data daily.
+* The system shall back up occupancy, reservation, and review data daily. Status: the backup script (make backup) and a restore are tested; the daily schedule is not set up yet.
 
 ### **Performance**
 
@@ -172,7 +172,7 @@ University students lack real-time visibility into study space availability acro
 * The system shall enforce authentication via university account (SSO) with JWT-based sessions.
 * The system shall provide role-based access control (Admin, Customer).
 * The API Gateway shall verify the JWT of every protected request before it reaches a service, and each service shall check the user's role again.
-* The system shall protect personal and usage data in accordance with Thailand's Personal Data Protection Act (PDPA).
+* The system shall protect personal and usage data in accordance with Thailand's Personal Data Protection Act (PDPA). Status: a user can no longer view another user's profile; consent and the other PDPA requirements are not implemented yet.
 
 ### **Usability**
 
@@ -300,11 +300,11 @@ The system stores three kinds of data: reservations, which need transactional wr
 
 Options: MongoDB, MySQL, PostgreSQL. MongoDB has no cross-document constraint that prevents a duplicate booking, so the guarantee would have to be enforced in application code - the wrong place for it. It does suit reviews, since the shape of a review is likely to change and new fields can be added without migrations. MySQL and PostgreSQL both provide transactional writes; PostgreSQL was preferred for richer indexing on timestamp ranges. Because the data has different needs, reservations and occupancy logs go to PostgreSQL and reviews go to MongoDB.
 
-For hosting, options for PostgreSQL were Prisma Postgres, Supabase, and Neon (all managed PostgreSQL). Prisma Postgres was chosen for its free tier and minimal setup, since none of these require the team to operate a database server. One consequence of that choice is worth stating: Prisma ORM, the tool usually paired with Prisma Postgres, is Node/TypeScript-only and has no supported Go client, so the Go backend (ADR-003) cannot use it. For MongoDB, MongoDB Atlas (managed) was chosen for the same reason, with a free tier.
+For hosting, the options were managed services (Prisma Postgres, Supabase or Neon for PostgreSQL; MongoDB Atlas for MongoDB) or self-hosted containers. The team first planned to use Prisma Postgres and MongoDB Atlas for their free tiers. In practice, development, every load and NFR test, and the demo all run the whole system with Docker Compose on one machine (Deployment Overview), and the free tiers' connection and storage limits would have capped the load tests. Containers also keep the databases on the same network as the services, with nothing to sign up for and no internet connection needed during the demo.
 
 **Decision**
 
-PostgreSQL hosted on Prisma Postgres for the User, Library, Occupancy and Reservation services (one schema per service), and MongoDB hosted on MongoDB Atlas for the Review service (collection reviews). The Go backend will use Go-native libraries: pgx for PostgreSQL (not Prisma ORM) and the official MongoDB Go driver for MongoDB.
+PostgreSQL (postgres:17 container) for the User, Library, Occupancy and Reservation services (one schema per service), and MongoDB (mongo:8 container) for the Review service (collection reviews), both run by Docker Compose with their data in named volumes. Managed hosting (Prisma Postgres, MongoDB Atlas) is not used; it remains an option for a later production deployment and needs only a connection-string change. The Go backend uses Go-native libraries: pgx for PostgreSQL and the official MongoDB Go driver for MongoDB.
 
 **Status**
 
@@ -316,8 +316,8 @@ Accepted
 * The review schema can evolve (new tags, new fields) without migrations, so the review service can change independently of the other data.
 * Reviews refer to users and libraries by ID only. There are no foreign keys across databases, so orphaned reviews are possible and must be handled in application code, and the Go layer should validate input (rating range, allowed tag keys) to keep the collection from drifting.
 * No SQL joins between reviews and libraries; pages that need both are assembled in the application layer. There are no cross-database transactions, which is acceptable because reviews are never written atomically with reservations.
-* No Prisma ORM types or migration CLI on the Go side; PostgreSQL migrations need a separate tool (golang-migrate, or Prisma’s CLI as a dev-only step). MongoDB needs no schema migrations, but its indexes must be managed in code.
-* The team now runs, monitors, and secures two data stores, and depends on the managed hosting availability and free-tier limits of both Prisma Postgres and MongoDB Atlas.
+* There is no migration tool yet: each service creates its schema and tables on start-up (CREATE ... IF NOT EXISTS); golang-migrate is the upgrade path once schemas change in non-trivial ways. MongoDB needs no schema migrations, but its indexes must be managed in code.
+* The team runs, monitors, secures and backs up two data stores itself; there is no free-tier limit, but also no managed backup or failover, so backups depend on the team's own script (make backup), and a failure of the one host stops both databases (Risk Matrix R4).
 * The reservations table also serves as the outbox for no-show events (ADR-007). Its row lock keeps a staff check-in and the no-show check from both acting on the same booking.
 * Each service reads and writes only its own schema (users, library, occupancy, reservation) or, for Review, its own MongoDB collection. Data owned by another service is obtained through that service's API, never by querying its tables, so a schema can later move to its own instance with only a connection-string change.
 
@@ -423,7 +423,7 @@ System operations are abstractions of external requests derived from the use cas
 * createReservation(): UC-02 Reserve Meeting Room
 * acceptReservation(), rejectReservation(): UC-02, Admin reviews the booking
 * cancelReservation(): UC-02, Customer cancels a pending or accepted booking
-* checkIn(): UC-02, staff scan the booking QR code at the room
+* checkIn(): UC-02, staff enter the booking reference on the admin check-in page (scanning the QR code with a camera is not yet implemented)
 * createReview(), updateReview(), deleteReview(): UC-04 Review Library
 * moderateReview(): UC-04, Admin moderation
 * manageLibraries(): Admin creates, edits and deletes libraries and meeting rooms
@@ -465,7 +465,7 @@ All client traffic enters through the API Gateway (ADR-008) at port 8080, the on
 | Path prefix | Upstream (registry name) | Protocol | Access at the gateway |
 | :---- | :---- | :---- | :---- |
 | /api/auth/\* | consul://user (port 8081) | REST | Public |
-| /api/users/\* | consul://user (port 8081) | REST | JWT required; penalty admin routes need role admin |
+| /api/users/\* | consul://user (port 8081) | REST | /api/users/me needs a JWT only; every other path needs role admin |
 | /api/occupancy/\* | consul://occupancy (port 8083) | REST | Public |
 | /api/reservations/\* | consul://reservation (port 8084) | REST | JWT required; listing all, accept, reject and check-in need role admin |
 | /api/reviews/\* | consul://review (port 8085) | REST | GET public; writes need JWT; flagged list and moderation need role admin |
@@ -473,11 +473,27 @@ All client traffic enters through the API Gateway (ADR-008) at port 8080, the on
 
 The gateway answers 401 for a missing or invalid token and 403 for the wrong role before forwarding, 503 when the registry has no healthy instance, 504 when an upstream does not answer within 5 seconds, and 429 when a client exceeds 50 requests per second.
 
-Service-to-service calls use the same registry: Reservation, Review and Occupancy reach the Library Service at LIBRARY_GRPC_ADDR=consul://library, and Reservation and Review reach the User Service at USER_URL=consul://user. Next.js reaches the gateway at GATEWAY_URL=http://localhost:8080. The data stores and the broker are single instances reached by Compose DNS name (postgres:5432, mongo:27017, rabbitmq:5672, consul:8500).
+Service-to-service calls use the same registry: Reservation, Review and Occupancy reach the Library Service at LIBRARY_GRPC_ADDR=consul://library, and Reservation and Review reach the User Service at USER_URL=consul://user. Next.js reaches the gateway at GATEWAY_URL=http://gateway:8080 inside Compose (http://localhost:8080 when run outside it). The data stores and the broker are single instances reached by Compose DNS name (postgres:5432, mongo:27017, rabbitmq:5672, consul:8500).
 
 **Registration and health.** Each instance registers itself on start-up with a health check that Consul runs every 5 seconds, and deregisters on shutdown. Consul returns only instances whose check is passing, so a crashed replica stops receiving traffic while Compose restarts it.
 
 **Scaling.** docker compose --profile app up -d --scale library=3 starts two more Library instances; they register, pass their check and share the load with no configuration change. Verified on 27 Oct 2026: with three Library instances the gateway spread requests evenly across all three, and after one instance was killed every following request still returned 200.
+
+# **Deployment Overview**
+
+The whole system, including the frontend, runs with Docker Compose on one machine and starts with one command: make up (in backend/). Development, the demo and every load and NFR test use this setup; no managed database hosting (Prisma Postgres, MongoDB Atlas) is used (ADR-006).
+
+| Container | Role | Port published to the host |
+| :---- | :---- | :---- |
+| frontend | Next.js web app | 3000 (web) |
+| gateway | API Gateway (ADR-008) | 8080 |
+| user, library, occupancy, reservation, review | Business services | None; reached through the gateway and Consul |
+| postgres | PostgreSQL 17, one schema per service | 5432 |
+| mongo | MongoDB 8, reviews | 27018 (container port 27017) |
+| rabbitmq | Message broker (ADR-007) | 5672 (AMQP), 15672 (management UI) |
+| consul | Service registry (ADR-009) | 8500 (Consul UI) |
+
+The frontend is not registered in Consul: it calls the gateway directly at GATEWAY_URL=http://gateway:8080. Only the gateway port carries application traffic; the database, broker and Consul ports are published for development tools and the test scripts.
 
 # **System Architecture (C4 Model)**
 
@@ -556,30 +572,31 @@ Responses 409 (slot taken), 422 (quota reached) and 403 (active penalty) are exp
 
 | Test | Peak VUs | Requests/s | p95 reservation | p95 reads | Error rate | Result |
 | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| Load test | 50 | 53 | 2.8 ms | 14.2 ms | 0% | Pass |
-| Stress 50 | 50 | 60 | 2.9 ms | 15.3 ms | 0% | Pass |
-| Stress 100 | 100 | 121 | 3.0 ms | 16.1 ms | 0% | Pass |
-| Stress 200 | 200 | 240 | 3.1 ms | 18.3 ms | 0% | Pass |
-| Stress 400 | 400 | 481 | 4.6 ms | 28.1 ms | 0% | Pass |
+| Load test | 50 | 54 | 7.5 ms | 4.9 ms | 0% | Pass |
+| Stress 50 | 50 | 61 | 7.2 ms | 6.8 ms | 0% | Pass |
+| Stress 100 | 100 | 123 | 6.0 ms | 6.5 ms | 0% | Pass |
+| Stress 200 | 200 | 242 | 3.4 ms | 6.1 ms | 0% | Pass |
+| Stress 400 | 400 | 481 | 2.9 ms | 7.0 ms | 0% | Pass |
+| Recovery | 10 | 13 | 8.8 ms | 17.0 ms | 0% | Pass |
 
-**Interpretation:** every target was met. In the stress test no step crossed a threshold, so the breaking point is above 400 virtual users on one machine: throughput grew in step with load (about 60 to 480 requests/s) and the error rate stayed at 0%. Reads are the slower path; their p95 rose from 15 ms to 28 ms at 400 users, while reservations stayed under 5 ms. The busiest containers at 400 users were the Review Service (peak 3.6 CPU cores) and MongoDB (1.2 cores), which serve review reads and writes, so they would be the first to need a second replica; PostgreSQL stayed under 0.2 cores and the gateway under 0.5 cores. After every run the overlap query found 0 double-booked rooms. Responses 409 and 422 (12.7% of requests) are expected outcomes, not errors, and the gateway rate limiter rejected 0.3% of requests at 200 and 400 users.
+**Interpretation:** every target was met. In the stress test no step crossed a threshold, so no breaking point was found up to 400 virtual users on one machine: throughput grew in step with load (about 60 to 480 requests/s) and the error rate stayed at 0%. Every p95 stayed under 20 ms, far below the 1 s and 500 ms targets, and the system answered normally in the recovery phase after load dropped to 10 users. After every run the overlap query found 0 double-booked rooms. Responses 409 and 422 are expected outcomes, not errors: about 11.2% of requests in the load test and 12.1% in the stress test. The gateway rate limiter rejected 0.33% of requests at 200 and 400 users. Peak CPU per container in the stress test was Review Service 0.46 cores, RabbitMQ 0.41, MongoDB 0.29, gateway 0.11 and PostgreSQL 0.06, so no container came close to saturating the machine; the Review Service was the busiest and would be the first to need a second replica.
 
-Runs: load-20261027-195449 and stress-20261027-200253. make loadtest and make stresstest write the k6 summary (.json), an HTML report with charts (.html) and docker stats (.stats.txt) to loadtest/results/, which is not committed; re-run them to reproduce the numbers.
+Both runs started from a fresh database, and k6 ran on the same machine as the system, so the load generator shared CPU with the containers under test. Runs: load-20261105-104404 and stress-20261105-105056. make loadtest and make stresstest write the k6 summary (.json), an HTML report with charts (.html) and docker stats (.stats.txt) to loadtest/results/, which is not committed; re-run them to reproduce the numbers.
 
 # **NFR Verification**
 
-Every non-functional requirement has an automated check that runs against the stack started by make up (and pnpm dev for the UI checks).
+Every non-functional requirement has an automated check that runs against the stack started by make up; the stack includes the frontend, so the UI checks need only pnpm test:nfr (in frontend/). All checks below were run on 5 Nov 2026.
 
 | Requirement | Test | Run with | Pass condition | Result |
 | :---- | :---- | :---- | :---- | :---- |
 | Performance: reservations p95 < 1 s, reads p95 < 500 ms, error rate < 1% | loadtest/load.js, loadtest/stress.js (k6) | make loadtest, make stresstest | k6 thresholds hold at every step; the overlap query returns 0 rows | Pass |
-| Performance: occupancy within two poll intervals | loadtest/resilience.sh freshness | make nfr-resilience | Oldest occupancy reading seen over 2.5 poll intervals is at most 2 poll intervals (60 s) | TBD |
-| Performance: uptime at least 99%; health checks and automatic restart | loadtest/resilience.sh uptime | make nfr-resilience | One of two Library replicas is crashed under about 10 requests/s: it is back and healthy within 30 s and fewer than 1% of gateway requests fail | TBD |
-| Operational: daily backup | loadtest/resilience.sh backup | make nfr-resilience | The backup restores into scratch databases with the same row and document counts as the live ones | TBD |
-| Security: gateway JWT check and role-based access | loadtest/security.js (k6) | make nfr-security | Every protected route returns 401 with no or a forged JWT and 403 for the wrong role; the Reservation Service itself rejects an admin booking (403) | TBD |
-| Operational and Usability: works on mobile | frontend/e2e/nfr.mjs (Playwright) | pnpm test:nfr | Customer and admin pages fit a 375 px screen with no horizontal scroll | TBD |
-| Usability: few steps to check occupancy and book | frontend/e2e/nfr.mjs | pnpm test:nfr | Occupancy is visible on the landing page with 0 extra clicks; booking takes 7 user actions from sign-in to confirmation | TBD |
-| Cultural: Thai UI, English optional | frontend/e2e/nfr.mjs | pnpm test:nfr | Thai by default (html lang="th"); the EN toggle switches the UI to English | TBD |
+| Performance: occupancy within two poll intervals | loadtest/resilience.sh freshness | make nfr-resilience | Oldest occupancy reading seen over 2.5 poll intervals is at most 2 poll intervals (60 s) | Pass: oldest reading 30 s (limit 60 s) |
+| Performance: uptime at least 99%; health checks and automatic restart | loadtest/resilience.sh uptime | make nfr-resilience | One of two Library replicas is crashed under about 10 requests/s: it is back and healthy within 30 s and fewer than 1% of gateway requests fail | Pass: healthy again after 11 s; 0 of 444 requests failed |
+| Operational: daily backup | loadtest/resilience.sh backup | make nfr-resilience | The backup restores into scratch databases with the same row and document counts as the live ones | Pass: counts match for all 6 tables and the reviews collection (daily schedule not set up yet) |
+| Security: gateway JWT check and role-based access | loadtest/security.js (k6) | make nfr-security | Every protected route returns 401 with no or a forged JWT and 403 for the wrong role; the Reservation Service itself rejects an admin booking (403) | Pass: 72 of 72 checks |
+| Operational and Usability: works on mobile | frontend/e2e/nfr.mjs (Playwright) | pnpm test:nfr | Customer and admin pages fit a 375 px screen with no horizontal scroll | Pass: every tested page fits 375 px |
+| Usability: few steps to check occupancy and book | frontend/e2e/nfr.mjs | pnpm test:nfr | Occupancy is visible on the landing page with 0 extra clicks; booking takes 7 user actions from sign-in to confirmation | Pass: occupancy visible with 0 extra clicks; booking takes 7 actions |
+| Cultural: Thai UI, English optional | frontend/e2e/nfr.mjs | pnpm test:nfr | Thai by default (html lang="th"); the EN toggle switches the UI to English | Pass: Thai by default; EN toggle works |
 
 # **Quality Attribute: Performance**
 
@@ -590,7 +607,7 @@ Performance is the quality attribute the team measures. It is written as a quali
 | Source | 50 concurrent customers and admins |
 | Stimulus | Browse occupancy, open library pages, create and accept reservations, post reviews (traffic mix above) |
 | Artifact | API Gateway; Occupancy, Library, Reservation and Review services; PostgreSQL; MongoDB |
-| Environment | Normal operation; all containers on one machine with Docker Compose |
+| Environment | Normal operation; all containers on one machine with Docker Compose, starting from a fresh database; k6 runs on the same machine |
 | Response | Every request is answered and no meeting room is double-booked |
 | Response measure | p95 latency < 1 s for reservation calls and < 500 ms for reads; error rate < 1%; 0 overlapping reservations |
 
@@ -601,7 +618,7 @@ Performance is the quality attribute the team measures. It is written as a quali
 * PostgreSQL connection pooling (pgxpool) and indexes on the columns each query filters by; double booking is rejected by a database constraint rather than by extra round trips.
 * The gateway is stateless, so it and the busiest service can run as several replicas if the stress test shows they are the bottleneck.
 
-**Measurement.** The load and stress tests above are the measurement. All targets were met at 50 users and every stress step up to 400 users, so no extra tactic was needed; the stress test shows that the Review Service and MongoDB would be the first components to scale.
+**Measurement.** The load and stress tests above are the measurement (runs load-20261105-104404 and stress-20261105-105056). All targets were met at 50 users and at every stress step up to 400 users, with every p95 under 20 ms and 0 overlapping reservations, so no breaking point was found on one machine and no extra tactic was needed. Peak CPU stayed under half a core per container; the Review Service (0.46 cores) would be the first component to scale.
 
 # **Risk Matrix**
 
@@ -612,8 +629,8 @@ Each risk is rated for likelihood and impact from 1 (Low) to 3 (High); score = l
 | R1 | Turnstile data access is never granted, so occupancy stays simulated | High (3) | High (3) | 9 | Turnstile source behind an interface with a mock generator (ADR-005); the demo states the data is simulated; access requested early |
 | R2 | The API Gateway fails or becomes the bottleneck, so every request fails | Medium (2) | High (3) | 6 | Stateless gateway with health check and automatic restart; services behind it can be scaled and are health-checked by Consul (ADR-009); capacity measured in the stress test |
 | R3 | CU SSO credentials are not issued in time, or SSO is down | High (3) | Medium (2) | 6 | Identity provider behind an interface; mock OIDC provider for the demo (ADR-004) |
-| R4 | Free-tier limits of Prisma Postgres or MongoDB Atlas (connections, storage) are hit during tests or the demo | Medium (2) | Medium (2) | 4 | Run load tests against local containers; cap connection pool sizes; daily backups |
-| R5 | The team is new to Go, and a late change could break the live demo | Medium (2) | Medium (2) | 4 | Run make loadtest, make nfr-security, make nfr-resilience and pnpm test:nfr before every demo; freeze features one week before the presentation |
+| R4 | All containers, including PostgreSQL and MongoDB, run on one machine (ADR-006), so a host failure stops the demo or a lost volume loses data | Medium (2) | Medium (2) | 4 | Data in named Docker volumes; backup script with a tested restore (make backup, make nfr-resilience); take a backup before the demo; the whole stack restarts with make up |
+| R5 | The team is new to Go, and a late change could break the live demo | Medium (2) | Medium (2) | 4 | Run make loadtest, make nfr-security, make nfr-resilience and pnpm test:nfr before every demo, and merge a change only after they pass |
 | R6 | Double booking under concurrent requests | Low (1) | High (3) | 3 | Row lock in a transaction plus an EXCLUDE constraint (ADR-006); checked by the overlap query after every load test |
 | R7 | No-show events pile up in the dead-letter queue, or RabbitMQ is down, so penalties are not applied | Low (1) | Medium (2) | 2 | Reservations table as outbox and an idempotent consumer (ADR-007); dead-letter queue watched in the RabbitMQ management UI |
 
@@ -641,3 +658,15 @@ How each term-project requirement in the course syllabus is covered by this docu
 | Risk matrix, at least 3 issues | Risk Matrix | None (document only) | Documented |
 | 1 measurable quality attribute | Quality Attribute: Performance | Load and stress test results | Implemented |
 | Live demo of the front-end UI | UC-00 to UC-04 | frontend/ (Next.js) | Implemented |
+
+### **Not yet implemented**
+
+These features are kept in the use cases and requirements above but are not built yet:
+
+* Real OIDC sign-in with CU SSO (UC-00): sign-in uses a mock identity provider with no password (ADR-004).
+* Choosing a meeting room on a map (UC-02): rooms are chosen from a list.
+* Scanning the booking QR code with a camera (UC-02): staff type the booking reference on the admin check-in page.
+* Photo attachments on reviews (UC-04).
+* Profile activity (UC-04).
+* A daily backup schedule: the backup script and restore are tested, but nothing runs them automatically.
+* PDPA consent and other PDPA requirements beyond hiding other users' profiles.
